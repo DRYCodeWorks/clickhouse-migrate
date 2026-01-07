@@ -1,0 +1,57 @@
+# ClickHouse Projects Configuration
+# This file defines all your ClickHouse projects and their environments
+# Credentials should be stored in environment variables or keyring, not here
+
+projects:
+  metopio:
+    description: "Main Metopio application database"
+    environments:
+      staging:
+        host: "bancny4ogy.us-east-1.aws.clickhouse.cloud"
+        port: 8443
+        database: metopio
+        secure: true
+        # User will be read from CH_METOPIO_STAGING_USER env var
+        # Password from CH_METOPIO_STAGING_PASSWORD or keyring
+
+    # Default roles for this project
+    default_roles:
+      - developer_admin_role
+      - service_role
+      - readonly_role
+
+  # Example second project
+  # analytics:
+  #   description: "Analytics and reporting database"
+  #   environments:
+  #     dev:
+  #       host: "analytics-dev.clickhouse.cloud"
+  #       port: 8443
+  #       database: analytics_dev
+  #       secure: true
+  #     prod:
+  #       host: "analytics-prod.clickhouse.cloud"
+  #       port: 8443
+  #       database: analytics
+  #       secure: true
+
+# Global settings
+settings:
+  default_project: metopio
+  default_environment: staging
+  connection_timeout: 10
+  query_timeout: 300
+
+  # How to store credentials
+  credential_storage: env  # Options: env, keyring, prompt
+
+  # Query settings
+  query_defaults:
+    max_execution_time: 300
+    max_memory_usage: 10000000000  # 10GB
+
+  # User management defaults
+  user_defaults:
+    password_length: 32
+    password_special_chars: true
+    default_auth_type: sha256_password

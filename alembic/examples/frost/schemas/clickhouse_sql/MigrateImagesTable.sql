@@ -1,0 +1,1 @@
+INSERT INTO images_new SELECT * FROM images;

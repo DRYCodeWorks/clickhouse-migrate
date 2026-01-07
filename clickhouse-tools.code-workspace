@@ -1,0 +1,85 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../Metopio/metopio-clickhouse"
+		},
+		{
+			"path": "../Frost/db-scripts"
+		}
+	],
+	"settings": {
+		"dbcode.connections": [
+			{
+				"connectionId": "bdnIvII6AgZy0gqFWsUar",
+				"name": "metopio-dev",
+				"driver": "postgres",
+				"connectionType": "host",
+				"host": "localhost",
+				"port": 5432,
+				"ssl": false,
+				"username": "appuser",
+				"password": "",
+				"savePassword": "secretStorage",
+				"database": "sdh",
+				"readOnly": true,
+				"requestTimeout": 30000,
+				"connectionTimeout": 30000
+			},
+			{
+				"connectionId": "xcYsvyA3vVHhjSPA4lk8j",
+				"name": "metopio-staging",
+				"driver": "clickhouse",
+				"host": "bancny4ogy.us-east-1.aws.clickhouse.cloud",
+				"port": 8443,
+				"ssl": true,
+				"sslTrustCertificate": true,
+				"username": "dans_service_user",
+				"password": "",
+				"savePassword": "secretStorage",
+				"database": "metopio",
+				"readOnly": false,
+				"requestTimeout": 30000,
+				"connectionType": "host"
+			},
+			{
+				"connectionId": "uCdtq0u2VZ52LqK6M96Jo",
+				"name": "Frost Prod",
+				"driver": "clickhouse",
+				"color": "#00A6FF",
+				"host": "z0l0e27q6v.us-east-2.aws.clickhouse.cloud",
+				"port": 8443,
+				"ssl": true,
+				"sslTrustCertificate": true,
+				"username": "dans_service_user",
+				"password": "",
+				"savePassword": "secretStorage",
+				"database": "frost_prod",
+				"readOnly": false,
+				"requestTimeout": 30000,
+				"connectionTimeout": 30000,
+				"connectionType": "host"
+			},
+			{
+				"connectionId": "ZCTp04SF9-m16kIyWXU7j",
+				"name": "Frost Dev",
+				"driver": "clickhouse",
+				"color": "#1AAFFF",
+				"host": "xtes0eqrf1.us-east-2.aws.clickhouse.cloud",
+				"port": 8443,
+				"ssl": true,
+				"sslTrustCertificate": true,
+				"username": "dans_service_user",
+				"password": "",
+				"savePassword": "secretStorage",
+				"database": "frost_dev",
+				"readOnly": false,
+				"requestTimeout": 30000,
+				"connectionTimeout": 30000,
+				"connectionType": "host"
+			}
+		]
+	}
+}

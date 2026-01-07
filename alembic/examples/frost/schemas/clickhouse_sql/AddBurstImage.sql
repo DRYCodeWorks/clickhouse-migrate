@@ -1,0 +1,1 @@
+ALTER TABLE images_rmt ADD COLUMN IsBurstImage Bool

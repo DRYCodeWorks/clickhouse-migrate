@@ -1,0 +1,27 @@
+# ClickHouse Tools Dependencies
+
+# Core dependencies
+clickhouse-connect>=0.7.0  # Official ClickHouse Python client
+click>=8.1.0              # CLI framework
+PyYAML>=6.0               # YAML configuration parsing
+python-dotenv>=1.0.0      # Environment variable management
+keyring>=24.0.0           # Secure credential storage
+rich>=13.0.0              # Beautiful terminal output
+tabulate>=0.9.0           # Table formatting
+
+# Database and migration tools
+alembic>=1.13.0           # Database migrations (for later)
+sqlparse>=0.4.0           # SQL parsing and formatting
+
+# Development and testing
+pytest>=7.4.0             # Testing framework
+pytest-cov>=4.1.0         # Coverage reporting
+black>=23.0.0             # Code formatting
+isort>=5.12.0             # Import sorting
+mypy>=1.5.0               # Type checking
+
+# Utilities
+jinja2>=3.1.0             # Template engine for SQL queries
+pandas>=2.0.0             # Data manipulation (for exports/comparisons)
+pyarrow>=14.0.0           # Parquet support (for data exports)
+cryptography>=41.0.0      # Password encryption

@@ -1,0 +1,2 @@
+-- Specify either the NOTRUNCATE option or the TRUNCATEONLY option when you run DBCC SHRINKDATABASE. If you don't, the result is the same as if you run a DBCC SHRINKDATABASE operation with NOTRUNCATE followed by running a DBCC SHRINKDATABASE operation with TRUNCATEONLY. 
+DBCC SHRINKDATABASE ("frost-db-prd", 10);

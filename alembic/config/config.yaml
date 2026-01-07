@@ -1,0 +1,102 @@
+# ClickHouse Migration Tool Configuration
+# This file defines the configuration structure for your migration environments
+
+# Project Information
+project:
+  name: "my-clickhouse-project"
+  description: "ClickHouse database migrations"
+
+# Credential Management System
+# Supported types: aws_secrets, aws_ssm, hashicorp_vault, env_vars, file_based
+credentials:
+  type: "env_vars"  # Default to environment variables for simplicity
+  
+  # AWS Secrets Manager Configuration (when type=aws_secrets)
+  aws_secrets:
+    region: "us-east-1"
+    secret_mappings:
+      # Format: environment_name -> secret_id
+      dev: "dev/clickhouse/credentials"
+      staging: "staging/clickhouse/credentials"
+      prod: "prod/clickhouse/credentials"
+  
+  # AWS SSM Parameter Store (when type=aws_ssm)
+  aws_ssm:
+    region: "us-east-1"
+    parameter_mappings:
+      # Format: environment_name -> parameter_path
+      dev: "/dev/clickhouse"
+      staging: "/staging/clickhouse"
+      prod: "/prod/clickhouse"
+  
+  # Environment Variables (when type=env_vars) - Default
+  env_vars:
+    # Define the environment variable pattern for each field
+    host_pattern: "{env_upper}_HOST"
+    database_pattern: "{env_upper}_DATABASE" 
+    username_pattern: "{env_upper}_USERNAME"
+    password_pattern: "{env_upper}_PASSWORD"
+    port_pattern: "{env_upper}_PORT"
+
+# Database Environments
+environments:
+  local:
+    host: "localhost"
+    port: 8123
+    protocol: "http"
+    database: "default"
+    # Credentials will be loaded based on the credentials.type setting
+    
+  dev:
+    host: "dev.clickhouse.example.com"
+    port: 8443
+    protocol: "https"
+    database: "dev_db"
+    
+  staging:
+    host: "staging.clickhouse.example.com" 
+    port: 8443
+    protocol: "https"
+    database: "staging_db"
+    
+  prod:
+    host: "prod.clickhouse.example.com"
+    port: 8443
+    protocol: "https"
+    database: "prod_db"
+
+# Migration Settings
+migration:
+  # Directory structure
+  version_locations:
+    clickhouse: "clickhouse_migrations"
+    sql_server: "migrations"  # For mixed environments
+  
+  # File templates
+  file_template: "%%(year)d_%%(month).2d_%%(day).2d_%%(hour).2d%%(minute).2d_%%(slug)s"
+  
+  # Post-write hooks
+  hooks:
+    enabled: true
+    formatters: ["black"]
+
+# Schema Management
+schema:
+  # Base schema files location
+  base_path: "schemas"
+  
+  # Schema modules to load per environment
+  modules:
+    shared: ["schema"]  # Always loaded
+    environment_specific: []  # Override per environment if needed
+
+# Optional: External Dependencies (dictionaries, external data sources)
+external:
+  # API endpoints for dictionaries (if applicable)
+  apis:
+    devices: 
+      url_template: "https://api.{environment}.example.com/clickhouse/devices"
+      auth:
+        type: "header"  # header, bearer, basic
+        header_name: "api-key"
+        credential_key: "api_key"  # Key to look up in credentials system

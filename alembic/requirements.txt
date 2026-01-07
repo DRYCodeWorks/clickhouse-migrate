@@ -1,0 +1,13 @@
+alembic          
+black            
+pylint           
+pyodbc           
+python-dotenv    
+sqlacodegen==3.0.0b2 # Experimental support for Identity types and other advanced SQL Server features
+SQLAlchemy       
+clickhouse-connect
+clickhouse-sqlalchemy
+typer
+pandas
+pyarrow
+PyYAML

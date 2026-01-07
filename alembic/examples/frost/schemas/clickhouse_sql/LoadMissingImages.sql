@@ -1,0 +1,1 @@
+INSERT INTO images SELECT * FROM images_new WHERE CaptureDateTimeUTC > ?;

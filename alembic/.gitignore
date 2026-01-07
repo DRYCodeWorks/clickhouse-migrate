@@ -1,0 +1,12 @@
+*.env*
+*.vscode
+*__pycache__
+*.DS_Store
+_stub.py
+*.python-version
+*todo
+*no_commit*
+**/errors_*
+*.log
+operational_queries
+storm_def_results

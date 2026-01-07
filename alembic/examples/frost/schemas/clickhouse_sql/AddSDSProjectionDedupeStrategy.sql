@@ -1,0 +1,1 @@
+ALTER TABLE sds_readings MODIFY SETTING deduplicate_merge_projection_mode = 'rebuild'

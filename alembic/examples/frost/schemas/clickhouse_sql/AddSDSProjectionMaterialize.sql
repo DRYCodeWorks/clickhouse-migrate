@@ -1,0 +1,1 @@
+ALTER TABLE sds_readings MATERIALIZE PROJECTION proj_by_uploaded_by_rwis_id

@@ -1,0 +1,1 @@
+SELECT CaptureDateTimeUTC from images_new ORDER BY CaptureDateTimeUTC DESC limit 1;

@@ -1,0 +1,7 @@
+from schemas.schema import SensorHardware
+
+SENSOR_HARDWARE_COMPONENTS = {SensorHardware(VendorID="MB7384-1")}
+
+NEW_SENSOR_HARDWARE_COMPONENTS = set()
+
+SENSOR_HARDWARE_COMPONENTS.update(NEW_SENSOR_HARDWARE_COMPONENTS)

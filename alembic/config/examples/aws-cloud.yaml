@@ -1,0 +1,57 @@
+# AWS Cloud deployment configuration
+# Use this template for AWS-hosted ClickHouse with Secrets Manager
+
+project:
+  name: "aws-clickhouse-prod"
+  description: "AWS ClickHouse production setup"
+
+credentials:
+  type: "aws_secrets"
+  aws_secrets:
+    region: "us-east-1"
+    secret_mappings:
+      dev: "dev/clickhouse/credentials"
+      staging: "staging/clickhouse/credentials" 
+      prod: "prod/clickhouse/credentials"
+
+environments:
+  dev:
+    host: "dev.clickhouse.company.com"
+    port: 8443
+    protocol: "https"
+    database: "dev_analytics"
+    
+  staging:
+    host: "staging.clickhouse.company.com" 
+    port: 8443
+    protocol: "https"
+    database: "staging_analytics"
+    
+  prod:
+    host: "prod.clickhouse.company.com"
+    port: 8443
+    protocol: "https"
+    database: "prod_analytics"
+
+migration:
+  version_locations:
+    clickhouse: "clickhouse_migrations"
+  file_template: "%%(year)d_%%(month).2d_%%(day).2d_%%(hour).2d%%(minute).2d_%%(slug)s"
+  hooks:
+    enabled: true
+    formatters: ["black"]
+
+schema:
+  base_path: "schemas"
+  modules:
+    shared: ["schema"]
+
+# Example external API configuration for dictionaries
+external:
+  apis:
+    users: 
+      url_template: "https://api.{environment}.company.com/clickhouse/users"
+      auth:
+        type: "header"
+        header_name: "x-api-key"
+        credential_key: "api_key"

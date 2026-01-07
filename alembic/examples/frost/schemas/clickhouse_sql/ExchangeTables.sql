@@ -1,0 +1,1 @@
+EXCHANGE TABLES images AND images_new;

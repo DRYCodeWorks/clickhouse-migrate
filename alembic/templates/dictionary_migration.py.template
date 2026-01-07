@@ -1,0 +1,42 @@
+"""Create {dictionary_name} dictionary
+
+Revision ID: {revision}
+Revises: {down_revision}
+Create Date: {create_date}
+
+"""
+from alembic import op
+import sqlalchemy as sa
+
+# revision identifiers, used by Alembic.
+revision = '{revision}'
+down_revision = {down_revision}
+branch_labels = {branch_labels}
+depends_on = {depends_on}
+
+
+def upgrade() -> None:
+    """Create {dictionary_name} dictionary"""
+    op.execute("""
+    CREATE DICTIONARY {dictionary_name} (
+        id UInt32,
+        name String,
+        -- Add your dictionary columns here
+        -- Example: category String,
+        -- Example: value Float32,
+    )
+    PRIMARY KEY id
+    SOURCE(HTTP(
+        url 'https://api.example.com/data/{dictionary_name}'
+        format 'JSONEachRow'
+        -- Add authentication headers if needed:
+        -- headers(header(name 'Authorization' value 'Bearer token'))
+    ))
+    LIFETIME(600)  -- Cache for 10 minutes
+    LAYOUT(FLAT())  -- Use FLAT layout for better performance with sequential keys
+    """)
+
+
+def downgrade() -> None:
+    """Drop {dictionary_name} dictionary"""
+    op.execute("DROP DICTIONARY IF EXISTS {dictionary_name}")

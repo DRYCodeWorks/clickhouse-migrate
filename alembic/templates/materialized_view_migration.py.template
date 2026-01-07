@@ -1,0 +1,50 @@
+"""Create {view_name} materialized view
+
+Revision ID: {revision}
+Revises: {down_revision}
+Create Date: {create_date}
+
+"""
+from alembic import op
+import sqlalchemy as sa
+
+# revision identifiers, used by Alembic.
+revision = '{revision}'
+down_revision = {down_revision}
+branch_labels = {branch_labels}
+depends_on = {depends_on}
+
+
+def upgrade() -> None:
+    """Create {view_name} materialized view"""
+    
+    # First create the destination table
+    op.execute("""
+    CREATE TABLE {view_name}_mv (
+        -- Define your aggregated columns here
+        -- Example: date Date,
+        -- Example: count UInt32,
+        -- Example: avg_value Float32,
+    )
+    ENGINE = SummingMergeTree()
+    ORDER BY (date)
+    """)
+    
+    # Then create the materialized view
+    op.execute("""
+    CREATE MATERIALIZED VIEW {view_name} TO {view_name}_mv AS
+    SELECT 
+        -- Add your SELECT statement here
+        -- Example: toDate(timestamp) as date,
+        -- Example: count(*) as count,
+        -- Example: avg(value) as avg_value
+    FROM source_table
+    -- Add your WHERE and GROUP BY clauses
+    -- Example: GROUP BY toDate(timestamp)
+    """)
+
+
+def downgrade() -> None:
+    """Drop {view_name} materialized view and table"""
+    op.execute("DROP VIEW IF EXISTS {view_name}")
+    op.execute("DROP TABLE IF EXISTS {view_name}_mv")

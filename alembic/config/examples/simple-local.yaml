@@ -1,0 +1,35 @@
+# Simple local development configuration
+# Use this as a starting point for local ClickHouse development
+
+project:
+  name: "local-clickhouse-dev"
+  description: "Local ClickHouse development setup"
+
+credentials:
+  type: "env_vars"
+  env_vars:
+    host_pattern: "{env_upper}_HOST"
+    database_pattern: "{env_upper}_DATABASE" 
+    username_pattern: "{env_upper}_USERNAME"
+    password_pattern: "{env_upper}_PASSWORD"
+    port_pattern: "{env_upper}_PORT"
+
+environments:
+  local:
+    host: "localhost"
+    port: 8123
+    protocol: "http"
+    database: "default"
+
+migration:
+  version_locations:
+    clickhouse: "clickhouse_migrations"
+  file_template: "%%(year)d_%%(month).2d_%%(day).2d_%%(hour).2d%%(minute).2d_%%(slug)s"
+  hooks:
+    enabled: true
+    formatters: ["black"]
+
+schema:
+  base_path: "schemas"
+  modules:
+    shared: ["schema"]

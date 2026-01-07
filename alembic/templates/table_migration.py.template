@@ -1,0 +1,35 @@
+"""Create {table_name} table
+
+Revision ID: {revision}
+Revises: {down_revision}
+Create Date: {create_date}
+
+"""
+from alembic import op
+import sqlalchemy as sa
+
+# revision identifiers, used by Alembic.
+revision = '{revision}'
+down_revision = {down_revision}
+branch_labels = {branch_labels}
+depends_on = {depends_on}
+
+
+def upgrade() -> None:
+    """Create {table_name} table"""
+    op.execute("""
+    CREATE TABLE {table_name} (
+        id UInt32,
+        created_at DateTime DEFAULT now(),
+        -- Add your columns here
+        -- Example: name String,
+        -- Example: value Float32,
+    ) 
+    ENGINE = MergeTree()
+    ORDER BY (id, created_at)
+    """)
+
+
+def downgrade() -> None:
+    """Drop {table_name} table"""
+    op.execute("DROP TABLE IF EXISTS {table_name}")
