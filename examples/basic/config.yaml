@@ -1,0 +1,18 @@
+project:
+  name: basic_example
+
+defaults:
+  port: 8443
+  secure: true
+  admin_user: default
+  dict_reader_name: dict_reader
+
+environments:
+  dev:
+    # For local ClickHouse (docker), use:
+    # host: localhost
+    # port: 8123
+    # secure: false
+    host: your-dev-instance.clickhouse.cloud
+    database: basic_example
+    user: service_dev
