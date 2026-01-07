@@ -1,0 +1,27 @@
+"""
+clickhouse-alembic: Alembic-based migrations for ClickHouse Cloud.
+
+Usage:
+    from clickhouse_alembic import read_sql, get_db, get_env_config, create_dictionary
+"""
+
+__version__ = "0.1.0"
+
+# Lazy imports to avoid import errors before dependencies are created
+def __getattr__(name: str):
+    if name in ("read_sql", "get_db", "create_dictionary"):
+        from clickhouse_alembic.helpers import read_sql, get_db, create_dictionary
+        return {"read_sql": read_sql, "get_db": get_db, "create_dictionary": create_dictionary}[name]
+    elif name == "get_env_config":
+        from clickhouse_alembic.config import get_env_config
+        return get_env_config
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+__all__ = [
+    "__version__",
+    "read_sql",
+    "get_db",
+    "get_env_config",
+    "create_dictionary",
+]
