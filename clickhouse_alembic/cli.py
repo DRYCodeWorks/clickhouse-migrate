@@ -300,11 +300,14 @@ def _extract_revision_from_output(stdout: str) -> str | None:
     """Extract revision ID from alembic output by reading the generated file."""
     # Find the generated file path from output
     # Format: "Generating /path/to/migrations/versions/<filename>.py ...  done"
-    match = re.search(r"Generating (.+\.py)", stdout)
+    # Note: Terminal wrapping may insert newlines/spaces in path
+    match = re.search(r"Generating (.+?\.py)", stdout, re.DOTALL)
     if not match:
         return None
 
-    migration_file = Path(match.group(1))
+    # Clean up newline+spaces inserted by terminal wrapping (preserves intentional spaces)
+    file_path = re.sub(r"\n\s*", "", match.group(1))
+    migration_file = Path(file_path)
     if not migration_file.exists():
         return None
 
