@@ -3,6 +3,19 @@ ClickHouse Alembic Environment.
 
 This module is copied to user projects and configures Alembic for ClickHouse.
 It loads configuration from config.yaml and secrets from environment variables.
+
+Why SQLAlchemy?
+--------------
+Alembic is built on SQLAlchemy as its core database abstraction layer. While we use
+clickhouse-connect for direct ClickHouse operations (bootstrap, helpers), Alembic
+requires SQLAlchemy for:
+- Connection management and pooling
+- Transaction handling (even though ClickHouse DDL isn't transactional)
+- Database dialect registration (clickhouse-sqlalchemy provides the ClickHouse dialect)
+- The `op.execute()` interface in migrations
+
+The clickhouse-sqlalchemy package provides the `clickhouse+http://` URL dialect that
+Alembic uses to connect to ClickHouse.
 """
 
 import os
@@ -53,7 +66,8 @@ class ClickhouseImpl(impl.DefaultImpl):
 def get_sqlalchemy_url() -> str:
     """Build SQLAlchemy-compatible ClickHouse URL from config."""
     host = env_config["host"]
-    user = env_config["user"]
+    # Support both new 'migration_user' and legacy 'user' field
+    user = env_config.get("migration_user") or env_config.get("user")
     password = env_config["password"]
     database = env_config["database"]
     port = env_config.get("port", 8443)
