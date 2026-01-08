@@ -93,9 +93,9 @@ environments:
     database: testdb
     user: service_dev
 """)
-        # Don't set CH_DEV_PASSWORD
+        # Don't set CH_DEV_MIGRATION_PASSWORD or CH_DEV_PASSWORD
 
-        with pytest.raises(ValueError, match="CH_DEV_PASSWORD"):
+        with pytest.raises(ValueError, match="CH_DEV_MIGRATION_PASSWORD"):
             get_env_config("dev", config_file)
 
     def test_raises_on_unknown_environment(self, tmp_path: Path):
