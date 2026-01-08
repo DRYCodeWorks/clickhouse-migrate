@@ -8,14 +8,18 @@ version_path_separator = os
 file_template = %%(year)d_%%(month).2d_%%(day).2d_%%(hour).2d%%(minute).2d_%%(slug)s
 
 # Environment sections - credentials come from config.yaml + .env.local
+# Each section inherits from [alembic] but must specify script_location and file_template
 [dev]
 script_location = migrations
+file_template = %%(year)d_%%(month).2d_%%(day).2d_%%(hour).2d%%(minute).2d_%%(slug)s
 
 [staging]
 script_location = migrations
+file_template = %%(year)d_%%(month).2d_%%(day).2d_%%(hour).2d%%(minute).2d_%%(slug)s
 
 [production]
 script_location = migrations
+file_template = %%(year)d_%%(month).2d_%%(day).2d_%%(hour).2d%%(minute).2d_%%(slug)s
 
 # Logging configuration
 [loggers]
