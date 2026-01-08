@@ -2,11 +2,19 @@
 
 A minimal example showing clickhouse-alembic in action.
 
+## What is ch-migrate?
+
+`ch-migrate` is a CLI tool for managing ClickHouse schema migrations. It:
+- Initializes project structure with config files
+- Bootstraps databases with proper users and roles
+- Runs Alembic migrations against ClickHouse
+
 ## Setup
 
 1. Install the package:
    ```bash
-   pip install clickhouse-alembic
+   uv add clickhouse-alembic
+   # or: pip install clickhouse-alembic
    ```
 
 2. Initialize (already done in this example):
@@ -16,20 +24,32 @@ A minimal example showing clickhouse-alembic in action.
 
 3. Configure `config.yaml` with your ClickHouse host
 
-4. Create `.env.local` with your passwords:
+4. Set up credentials (choose one):
+
+   **Option A: Environment file**
    ```bash
    cp .env.local.example .env.local
    # Edit .env.local with real passwords
    ```
 
+   **Option B: AWS SSM** (for production)
+   ```yaml
+   # In config.yaml, add ssm paths:
+   environments:
+     production:
+       ssm:
+         admin_password: /myproject/prod/admin_password
+         migration_password: /myproject/prod/migration_password
+   ```
+
 5. Bootstrap:
    ```bash
-   ./migrate.sh dev bootstrap
+   ch-migrate bootstrap dev
    ```
 
 6. Run migrations:
    ```bash
-   ./migrate.sh dev up
+   ch-migrate up dev
    ```
 
 ## Files
