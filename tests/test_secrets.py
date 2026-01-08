@@ -43,12 +43,23 @@ class TestGetSecret:
             Name="/myproject/dev/password", WithDecryption=True
         )
 
+    @patch("clickhouse_alembic.secrets._get_ssm_exceptions")
     @patch("clickhouse_alembic.secrets._get_ssm_client")
-    def test_raises_when_ssm_parameter_not_found(self, mock_get_client, monkeypatch):
+    def test_raises_when_ssm_parameter_not_found(
+        self, mock_get_client, mock_get_exceptions, monkeypatch
+    ):
         monkeypatch.delenv("CH_DEV_PASSWORD", raising=False)
 
+        # Create a mock ClientError with proper response structure
+        class MockClientError(Exception):
+            def __init__(self, error_code):
+                self.response = {"Error": {"Code": error_code}}
+                super().__init__(error_code)
+
+        mock_get_exceptions.return_value = MockClientError
+
         mock_client = Mock()
-        mock_client.get_parameter.side_effect = Exception("ParameterNotFound")
+        mock_client.get_parameter.side_effect = MockClientError("ParameterNotFound")
         mock_get_client.return_value = mock_client
 
         with pytest.raises(SSMSecretNotFoundError):

@@ -13,18 +13,47 @@ This script:
 5. Is idempotent - safe to run multiple times
 """
 
+import re
 import sys
 from pathlib import Path
 from typing import Optional
 
-import clickhouse_connect
-
 from clickhouse_alembic.config import get_env_config
 from clickhouse_alembic.secrets import get_secret
 
+# Pattern for valid SQL identifiers (database, user, role names)
+_IDENTIFIER_PATTERN = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+
+
+def validate_identifier(name: str, label: str) -> str:
+    """
+    Validate a SQL identifier (database, user, role name).
+
+    Args:
+        name: The identifier to validate
+        label: Human-readable label for error messages (e.g., "database name")
+
+    Returns:
+        The validated identifier (unchanged if valid)
+
+    Raises:
+        ValueError: If the identifier contains invalid characters
+    """
+    if not _IDENTIFIER_PATTERN.match(name):
+        raise ValueError(
+            f"Invalid {label}: {name!r}. "
+            f"Must start with letter/underscore and contain only alphanumeric/underscore."
+        )
+    return name
+
 
 def escape_sql_string(s: str) -> str:
-    """Escape a string for use in SQL single quotes."""
+    """
+    Escape a string for use in SQL single-quoted literals.
+
+    Note: This is for string literals (e.g., passwords) only, not identifiers.
+    Use validate_identifier() for database/user/role names.
+    """
     return s.replace("\\", "\\\\").replace("'", "''")
 
 
@@ -54,7 +83,19 @@ def build_bootstrap_sql(
 
     Returns:
         Complete SQL string for bootstrap
+
+    Raises:
+        ValueError: If any identifier contains invalid characters
     """
+    # Validate all identifiers to prevent SQL injection
+    project = validate_identifier(project, "project name")
+    db = validate_identifier(db, "database name")
+    migration_user = validate_identifier(migration_user, "migration user")
+    if dict_reader_name:
+        dict_reader_name = validate_identifier(dict_reader_name, "dict reader user")
+    if mcp_user_name:
+        mcp_user_name = validate_identifier(mcp_user_name, "MCP user")
+
     lines = [
         "-- Bootstrap script for ClickHouse database",
         "-- Safe to run multiple times (idempotent)",
@@ -140,6 +181,7 @@ def run_bootstrap(
     env_name: str,
     config_path: Optional[Path] = None,
     dry_run: bool = False,
+    verbose: bool = False,
 ) -> None:
     """
     Run bootstrap for the specified environment.
@@ -148,6 +190,7 @@ def run_bootstrap(
         env_name: Environment name (dev, staging, production, etc.)
         config_path: Path to config.yaml (defaults to ./config.yaml)
         dry_run: If True, print SQL without executing
+        verbose: If True, print each SQL statement as it executes
     """
     if config_path is None:
         config_path = Path.cwd() / "config.yaml"
@@ -245,6 +288,8 @@ def run_bootstrap(
     if mcp_user_name:
         print(f"==> MCP user: {mcp_user_name}")
 
+    import clickhouse_connect
+
     client = clickhouse_connect.get_client(
         host=host,
         port=port,
@@ -254,10 +299,19 @@ def run_bootstrap(
         interface="https" if secure else "http",
     )
 
+    # Collect passwords for masking in verbose output
+    passwords_to_mask = [p for p in [migration_password, dict_reader_password, mcp_password] if p]
+
     # Execute each statement
     for statement in sql.split(";"):
         statement = statement.strip()
         if statement and not statement.startswith("--"):
+            if verbose:
+                # Mask passwords in output
+                masked = statement
+                for pw in passwords_to_mask:
+                    masked = masked.replace(pw, "********")
+                print(f"  {masked};")
             client.command(statement)
 
     print("==> Bootstrap complete!")

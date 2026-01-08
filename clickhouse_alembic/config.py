@@ -1,10 +1,11 @@
 """Configuration loading for clickhouse-alembic."""
 
-import os
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+from clickhouse_alembic.secrets import get_secret
 
 
 def load_config(config_path: Path) -> dict[str, Any]:
@@ -61,35 +62,43 @@ def get_env_config(env_name: str, config_path: Path) -> dict[str, Any]:
     if isinstance(project_config, dict) and "name" in project_config:
         env_config["project"] = project_config["name"]
 
-    # Load secrets from environment variables
-    env_upper = env_name.upper()
+    # Get SSM config if present (for secret lookups)
+    ssm_config = environments[env_name].get("ssm", {})
+    if ssm_config:
+        env_config["ssm"] = ssm_config
 
-    # Service/migration password - support both new and legacy naming
-    # New: CH_{ENV}_MIGRATION_PASSWORD, Legacy: CH_{ENV}_PASSWORD
-    migration_password_key = f"CH_{env_upper}_MIGRATION_PASSWORD"
-    legacy_password_key = f"CH_{env_upper}_PASSWORD"
-    password = os.environ.get(migration_password_key) or os.environ.get(legacy_password_key)
-    if not password:
-        raise ValueError(
-            f"{migration_password_key} environment variable is required.\n"
-            f"Set it in .env.local or your shell environment."
-        )
+    # Load secrets using unified get_secret() - checks env vars first, then SSM
+    # Migration password is required
+    password = get_secret(
+        env_name,
+        "migration_password",
+        ssm_path=ssm_config.get("migration_password"),
+        required=True,
+    )
     env_config["password"] = password  # Legacy field for backward compat
 
     # Optional: admin password (for bootstrap)
-    admin_password_key = f"CH_{env_upper}_ADMIN_PASSWORD"
-    env_config["admin_password"] = os.environ.get(admin_password_key)
+    env_config["admin_password"] = get_secret(
+        env_name,
+        "admin_password",
+        ssm_path=ssm_config.get("admin_password"),
+        required=False,
+    )
 
     # Optional: dict_reader password (for dictionaries)
-    dict_password_key = f"CH_{env_upper}_DICT_READER_PASSWORD"
-    env_config["dict_reader_password"] = os.environ.get(dict_password_key)
+    env_config["dict_reader_password"] = get_secret(
+        env_name,
+        "dict_reader_password",
+        ssm_path=ssm_config.get("dict_reader_password"),
+        required=False,
+    )
 
     # Optional: MCP user password (for read-only access)
-    mcp_password_key = f"CH_{env_upper}_MCP_PASSWORD"
-    env_config["mcp_password"] = os.environ.get(mcp_password_key)
-
-    # Include SSM config if present
-    if "ssm" in environments[env_name]:
-        env_config["ssm"] = environments[env_name]["ssm"]
+    env_config["mcp_password"] = get_secret(
+        env_name,
+        "mcp_password",
+        ssm_path=ssm_config.get("mcp_password"),
+        required=False,
+    )
 
     return env_config
