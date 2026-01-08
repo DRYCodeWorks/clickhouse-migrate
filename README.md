@@ -12,7 +12,7 @@ Alembic-based migrations for ClickHouse, optimized for ClickHouse Cloud.
 ## Features
 
 - **Multi-environment support** - Manage dev, staging, and production with separate configs
-- **ClickHouse Cloud optimized** - Uses `SharedReplacingMergeTree`, handles non-transactional DDL
+- **ClickHouse Cloud compatible** - Uses standard engines (auto-upgraded to Shared* on Cloud), handles non-transactional DDL
 - **Role-based access control** - Creates roles for migration, read-only (MCP), and dictionary access
 - **Object-centric SQL history** - Track all versions of each table/view/dictionary
 - **Zero-downtime migrations** - `EXCHANGE TABLES` pattern for safe schema changes
@@ -158,7 +158,7 @@ CREATE TABLE {db}.users (
     name String,
     created_at DateTime DEFAULT now()
 )
-ENGINE = SharedMergeTree
+ENGINE = MergeTree
 ORDER BY id
 ```
 
@@ -287,7 +287,7 @@ Bootstrap creates the following roles:
 
 ## ClickHouse Cloud Notes
 
-- Uses `SharedReplacingMergeTree` / `SharedMergeTree` engines
+- Uses standard engines (`MergeTree`, `ReplacingMergeTree`) - auto-upgraded to `Shared*` variants on Cloud
 - Native port 9440 maps to HTTP port 8443
 - No transactional DDL - migrations can't be atomically rolled back
 - Each `op.execute()` runs one statement (no multi-statement batches)

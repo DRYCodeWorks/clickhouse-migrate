@@ -120,7 +120,7 @@ def bootstrap_version_table(connection: Connection) -> None:
                 `updated` DateTime DEFAULT now(),
                 `version_num` String
             )
-            ENGINE = SharedReplacingMergeTree('/clickhouse/tables/{{uuid}}/{{shard}}', '{{replica}}')
+            ENGINE = ReplacingMergeTree()
             ORDER BY updated
             SETTINGS index_granularity = 8192
         """

@@ -305,14 +305,18 @@ def run_bootstrap(
     # Execute each statement
     for statement in sql.split(";"):
         statement = statement.strip()
-        if statement and not statement.startswith("--"):
+        # Strip leading comment lines to get to the actual SQL
+        lines = statement.split("\n")
+        sql_lines = [line for line in lines if not line.strip().startswith("--")]
+        actual_sql = "\n".join(sql_lines).strip()
+        if actual_sql:
             if verbose:
                 # Mask passwords in output
                 masked = statement
                 for pw in passwords_to_mask:
                     masked = masked.replace(pw, "********")
                 print(f"  {masked};")
-            client.command(statement)
+            client.command(actual_sql)
 
     print("==> Bootstrap complete!")
     print(f"\nYou can now run migrations:")

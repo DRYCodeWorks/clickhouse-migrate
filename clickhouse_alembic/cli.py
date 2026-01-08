@@ -9,8 +9,14 @@ import sys
 from pathlib import Path
 
 import click
+from dotenv import load_dotenv
 
 from clickhouse_alembic.config import get_env_config
+
+# Load .env.local if it exists in the current directory
+_env_local = Path.cwd() / ".env.local"
+if _env_local.exists():
+    load_dotenv(_env_local)
 
 
 def get_template_path(name: str) -> Path:
@@ -46,7 +52,7 @@ def _run_alembic(environment: str, args: list[str]) -> None:
     env["CH_SECURE"] = "1" if env_config.get("secure", True) else "0"
 
     result = subprocess.run(
-        ["alembic"] + args,
+        ["alembic", "-n", environment] + args,
         env=env,
         cwd=Path.cwd(),
         capture_output=True,

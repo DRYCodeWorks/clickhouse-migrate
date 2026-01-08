@@ -1,8 +1,8 @@
-"""${{message}}
+"""${message}
 
-Revision ID: ${{up_revision}}
-Revises: ${{down_revision | comma,n}}
-Create Date: ${{create_date}}
+Revision ID: ${up_revision}
+Revises: ${down_revision | comma,n}
+Create Date: ${create_date}
 """
 
 from alembic import op
@@ -10,21 +10,21 @@ from alembic import op
 from clickhouse_alembic import get_db, read_sql
 
 # revision identifiers
-revision = ${{repr(up_revision)}}
-down_revision = ${{repr(down_revision)}}
-branch_labels = ${{repr(branch_labels)}}
-depends_on = ${{repr(depends_on)}}
+revision = ${repr(up_revision)}
+down_revision = ${repr(down_revision)}
+branch_labels = ${repr(branch_labels)}
+depends_on = ${repr(depends_on)}
 
 
 def upgrade() -> None:
     db = get_db()
     # TODO: Add your upgrade SQL here
-    # op.execute(read_sql("history/tables/my_table/001_{{}}.sql".format(revision), db=db))
+    # op.execute(read_sql("history/tables/my_table/001_{}.sql".format(revision), db=db))
     pass
 
 
 def downgrade() -> None:
     db = get_db()
     # TODO: Add your downgrade SQL here
-    # op.execute(f"DROP TABLE IF EXISTS {{db}}.my_table")
+    # op.execute(f"DROP TABLE IF EXISTS {db}.my_table")
     pass
