@@ -313,15 +313,15 @@ def _create_sql_file(name: str, object_type: str, revision: str) -> Path | None:
     sql_dir = Path.cwd() / "migrations" / "sql" / "history" / type_dir / name
     sql_dir.mkdir(parents=True, exist_ok=True)
 
-    # Determine sequence number
-    existing = list(sql_dir.glob("*.sql"))
-    seq = len(existing) + 1
+    # Use datetime prefix for ordering (matches alembic's file_template format)
+    now = datetime.now()
+    date_prefix = now.strftime("%Y_%m_%d_%H%M")
 
     # Create SQL file with minimal header
-    sql_file = sql_dir / f"{seq:03d}_{revision}.sql"
-    template = f"""-- {name} {object_type} v{seq}
+    sql_file = sql_dir / f"{date_prefix}_{revision}.sql"
+    template = f"""-- {name} {object_type}
 -- Migration: {revision}
--- Created: {datetime.now().strftime("%Y-%m-%d")}
+-- Created: {now.strftime("%Y-%m-%d %H:%M")}
 
 """
     sql_file.write_text(template)
