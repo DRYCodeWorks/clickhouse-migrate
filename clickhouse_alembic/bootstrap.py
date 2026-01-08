@@ -123,9 +123,9 @@ def build_bootstrap_sql(
         "-- Introspection (needed by Alembic)",
         f"GRANT SHOW TABLES, SHOW COLUMNS, SHOW DICTIONARIES ON {db}.* TO {project}_migration_role;",
         "",
-        "-- Temp tables and atomic swaps (for zero-downtime migrations)",
+        "-- Temp tables (for zero-downtime migrations with EXCHANGE TABLES)",
+        "-- Note: EXCHANGE TABLES requires DROP on both tables, already granted above",
         f"GRANT CREATE TEMPORARY TABLE ON *.* TO {project}_migration_role;",
-        f"GRANT EXCHANGE TABLES ON {db}.* TO {project}_migration_role;",
     ]
 
     # MCP readonly role (optional)
