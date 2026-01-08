@@ -64,3 +64,6 @@ coverage.xml
 # Temporary files
 tmp/
 temp/
+
+examples/
+lambda-exporter/
