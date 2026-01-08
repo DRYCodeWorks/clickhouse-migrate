@@ -13,11 +13,18 @@ class TestGetSecret:
         result = get_secret("dev", "password")
         assert result == "from-env"
 
-    def test_env_var_takes_precedence_over_ssm(self, monkeypatch):
+    @patch("clickhouse_alembic.secrets._get_ssm_client")
+    def test_ssm_takes_precedence_when_path_configured(self, mock_get_client, monkeypatch):
+        # Even with env var set, SSM is used when ssm_path is provided
         monkeypatch.setenv("CH_DEV_PASSWORD", "from-env")
-        # Even with SSM config, env var wins
+
+        mock_client = Mock()
+        mock_client.get_parameter.return_value = {"Parameter": {"Value": "from-ssm"}}
+        mock_get_client.return_value = mock_client
+
         result = get_secret("dev", "password", ssm_path="/myproject/dev/password")
-        assert result == "from-env"
+        assert result == "from-ssm"
+        mock_client.get_parameter.assert_called_once()
 
     def test_returns_none_when_not_required_and_missing(self, monkeypatch):
         monkeypatch.delenv("CH_DEV_DICT_READER_PASSWORD", raising=False)
@@ -30,7 +37,7 @@ class TestGetSecret:
             get_secret("dev", "password", required=True)
 
     @patch("clickhouse_alembic.secrets._get_ssm_client")
-    def test_falls_back_to_ssm_when_env_not_set(self, mock_get_client, monkeypatch):
+    def test_fetches_from_ssm_when_path_configured(self, mock_get_client, monkeypatch):
         monkeypatch.delenv("CH_DEV_PASSWORD", raising=False)
 
         mock_client = Mock()

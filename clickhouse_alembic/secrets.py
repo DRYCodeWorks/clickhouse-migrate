@@ -41,12 +41,12 @@ def get_secret(
     required: bool = True,
 ) -> Optional[str]:
     """
-    Get a secret value from environment variable or SSM.
+    Get a secret value from SSM or environment variable.
 
     Precedence:
-    1. Environment variable CH_{ENV}_{KEY} (e.g., CH_DEV_MIGRATION_PASSWORD)
-    2. Legacy env var for migration_password: CH_{ENV}_PASSWORD
-    3. SSM parameter at ssm_path (if provided)
+    1. SSM parameter at ssm_path (if provided) - use SSM directly
+    2. Environment variable CH_{ENV}_{KEY} (e.g., CH_DEV_MIGRATION_PASSWORD)
+    3. Legacy env var for migration_password: CH_{ENV}_PASSWORD
     4. None (if not required) or raise ValueError
 
     Args:
@@ -63,22 +63,7 @@ def get_secret(
         SSMSecretNotFoundError: If SSM path provided but parameter not found
         ImportError: If SSM path provided but boto3 not installed
     """
-    # Build environment variable name
-    env_var = f"CH_{env_name.upper()}_{key.upper()}"
-
-    # Check environment variable first
-    value = os.environ.get(env_var)
-    if value:
-        return value
-
-    # Legacy support: CH_{ENV}_PASSWORD for migration_password
-    if key == "migration_password":
-        legacy_var = f"CH_{env_name.upper()}_PASSWORD"
-        value = os.environ.get(legacy_var)
-        if value:
-            return value
-
-    # Try SSM if path provided
+    # If SSM path provided, use SSM directly (don't check env vars)
     if ssm_path:
         client = _get_ssm_client()
         ClientError = _get_ssm_exceptions()
@@ -93,6 +78,19 @@ def get_secret(
                 return None
             # Re-raise other AWS errors (permission denied, etc.)
             raise
+
+    # No SSM path - use environment variables
+    env_var = f"CH_{env_name.upper()}_{key.upper()}"
+    value = os.environ.get(env_var)
+    if value:
+        return value
+
+    # Legacy support: CH_{ENV}_PASSWORD for migration_password
+    if key == "migration_password":
+        legacy_var = f"CH_{env_name.upper()}_PASSWORD"
+        value = os.environ.get(legacy_var)
+        if value:
+            return value
 
     # Not found anywhere
     if required:

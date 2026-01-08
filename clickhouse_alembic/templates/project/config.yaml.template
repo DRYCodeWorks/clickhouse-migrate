@@ -15,13 +15,15 @@ defaults:
   # mcp_user_name: mcp_reader
 
 # Environment-specific configuration
-# Passwords loaded from: .env.local (CH_<ENV>_PASSWORD) or SSM (if configured)
+# Passwords loaded from:
+#   - SSM directly (if ssm: paths configured below)
+#   - .env.local / environment variables (otherwise)
 environments:
   dev:
     host: your-dev-instance.clickhouse.cloud
     database: {project_name}_dev
     migration_user: migration_dev
-    # Optional SSM paths (env vars take precedence)
+    # Optional SSM paths (if set, fetches from SSM directly)
     # ssm:
     #   admin_password: /{project_name}/dev/admin_password
     #   migration_password: /{project_name}/dev/migration_password

@@ -67,7 +67,7 @@ def get_env_config(env_name: str, config_path: Path) -> dict[str, Any]:
     if ssm_config:
         env_config["ssm"] = ssm_config
 
-    # Load secrets using unified get_secret() - checks env vars first, then SSM
+    # Load secrets using unified get_secret() - uses SSM if configured, otherwise env vars
     # Migration password is required
     password = get_secret(
         env_name,

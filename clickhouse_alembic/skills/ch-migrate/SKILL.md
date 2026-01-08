@@ -65,7 +65,7 @@ environments:
     host: dev.clickhouse.cloud  # or localhost for Docker
     database: my_project_dev
     migration_user: migration_dev
-    # Optional SSM paths (env vars take precedence):
+    # Optional SSM paths (if set, fetches from SSM directly):
     # ssm:
     #   admin_password: /my_project/dev/admin_password
     #   migration_password: /my_project/dev/migration_password

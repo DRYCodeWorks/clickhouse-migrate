@@ -257,7 +257,7 @@ environments:
     host: dev.clickhouse.cloud
     database: my_project_dev
     migration_user: migration_dev
-    # SSM paths (optional, env vars take precedence):
+    # SSM paths (optional, if set fetches from SSM directly):
     # ssm:
     #   admin_password: /my_project/dev/admin_password
     #   migration_password: /my_project/dev/migration_password

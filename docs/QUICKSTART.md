@@ -271,8 +271,8 @@ aws ssm put-parameter \
 
 ### Priority Order
 
-1. Environment variables (`CH_<ENV>_*`)
-2. SSM parameters (if configured)
+1. SSM parameters (if `ssm:` paths configured in config.yaml)
+2. Environment variables (`CH_<ENV>_*`) - used when no SSM paths
 3. Error if required and not found
 
 ---
