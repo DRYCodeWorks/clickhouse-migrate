@@ -113,7 +113,7 @@ def main() -> None:
 def init(path: str, name: str | None) -> None:
     """Initialize a new ClickHouse migration project.
 
-    Creates the project structure with config.yaml, migrate.sh, and migrations directory.
+    Creates the project structure with config.yaml and migrations directory.
     """
     project_path = Path(path).resolve()
 
@@ -141,7 +141,6 @@ def init(path: str, name: str | None) -> None:
         ("alembic.ini", "alembic.ini"),
         ("config.yaml", "config.yaml"),
         ("env.local.example", ".env.local.example"),
-        ("migrate.sh", "migrate.sh"),
         ("script.py.mako", "migrations/script.py.mako"),
     ]
 
@@ -156,11 +155,6 @@ def init(path: str, name: str | None) -> None:
         content = render_template(template_path, project_name=safe_name)
         output_path.write_text(content)
         click.echo(f"  Created {output_name}")
-
-    # Make migrate.sh executable
-    migrate_sh = project_path / "migrate.sh"
-    if migrate_sh.exists():
-        migrate_sh.chmod(0o755)
 
     # Copy env.py from package
     env_py_src = Path(__file__).parent / "env.py"
@@ -207,12 +201,14 @@ def bootstrap(environment: str, dry_run: bool, verbose: bool) -> None:
 
 @main.command()
 @click.argument("environment")
-def up(environment: str) -> None:
+@click.option("--revision", "-r", default="head", help="Revision to upgrade to (default: head)")
+def up(environment: str, revision: str) -> None:
     """Apply pending migrations.
 
     Runs all unapplied migrations to bring the database to the latest version.
+    Use --revision to upgrade to a specific revision instead of head.
     """
-    _run_alembic(environment, ["upgrade", "head"])
+    _run_alembic(environment, ["upgrade", revision])
 
 
 @main.command()

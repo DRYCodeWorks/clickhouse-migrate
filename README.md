@@ -50,7 +50,6 @@ my-clickhouse-project/
 ├── .env.local.example       # Template for secrets
 ├── .gitignore
 ├── alembic.ini
-├── migrate.sh               # Optional shell wrapper
 └── migrations/
     ├── env.py
     ├── script.py.mako
