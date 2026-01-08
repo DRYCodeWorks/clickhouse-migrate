@@ -18,10 +18,11 @@ description: Use when integrating ClickHouse migrations into a project, setting 
 | `ch-migrate init [PATH] [--name NAME]` | Initialize project structure |
 | `ch-migrate bootstrap ENV [--dry-run]` | Create database, roles, users |
 | `ch-migrate new ENV NAME [-t\|-v\|-d]` | Create migration (optionally with SQL file) |
-| `ch-migrate up ENV` | Apply pending migrations |
+| `ch-migrate up ENV [-r REV]` | Apply migrations (default: head, or to REV) |
 | `ch-migrate down ENV [-r REV]` | Rollback (default: last, or to REV) |
 | `ch-migrate status ENV` | Show current migration state |
 | `ch-migrate history ENV` | Show migration history |
+| `ch-migrate skill [--user\|--project]` | Install Claude skill for ch-migrate |
 
 **Flags for `new`:** `-t/--table`, `-v/--view`, `-d/--dict` create SQL history files in `migrations/sql/history/{tables|views|dictionaries}/{name}/`.
 
