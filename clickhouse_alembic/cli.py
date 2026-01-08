@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
-from pathlib import Path
-
-import re
 from datetime import datetime
+from pathlib import Path
 
 import click
 from dotenv import load_dotenv
@@ -252,7 +251,9 @@ def history(environment: str) -> None:
 @click.argument("name")
 @click.option("--table", "-t", "object_type", flag_value="table", help="Create table SQL file")
 @click.option("--view", "-v", "object_type", flag_value="view", help="Create view SQL file")
-@click.option("--dict", "-d", "object_type", flag_value="dictionary", help="Create dictionary SQL file")
+@click.option(
+    "--dict", "-d", "object_type", flag_value="dictionary", help="Create dictionary SQL file"
+)
 def new(environment: str, name: str, object_type: str | None) -> None:
     """Create a new migration.
 
@@ -326,6 +327,53 @@ def _create_sql_file(name: str, object_type: str, revision: str) -> Path | None:
 """
     sql_file.write_text(template)
     return sql_file
+
+
+@main.command()
+@click.option(
+    "--user",
+    "target",
+    flag_value="user",
+    default=True,
+    help="Install to ~/.claude/skills/ (default)",
+)
+@click.option("--project", "target", flag_value="project", help="Install to ./.claude/skills/")
+def skill(target: str) -> None:
+    """Install the ch-migrate Claude skill.
+
+    Copies the skill file to help Claude assist with ch-migrate integration.
+
+    \b
+    Locations:
+      --user     ~/.claude/skills/ch-migrate/  (default, for all projects)
+      --project  ./.claude/skills/ch-migrate/  (current project only)
+    """
+    # Find the skill bundled with this package
+    skill_src = Path(__file__).parent / "skills" / "ch-migrate" / "SKILL.md"
+
+    if not skill_src.exists():
+        click.echo(f"Error: Skill file not found at {skill_src}", err=True)
+        sys.exit(1)
+
+    # Determine destination
+    if target == "user":
+        skill_dir = Path.home() / ".claude" / "skills" / "ch-migrate"
+    else:
+        skill_dir = Path.cwd() / ".claude" / "skills" / "ch-migrate"
+
+    skill_dst = skill_dir / "SKILL.md"
+
+    # Create directory and copy
+    skill_dir.mkdir(parents=True, exist_ok=True)
+
+    if skill_dst.exists():
+        click.echo(f"Skill already exists at {skill_dst}")
+        if not click.confirm("Overwrite?"):
+            click.echo("Aborted.")
+            return
+
+    shutil.copy(skill_src, skill_dst)
+    click.echo(f"Installed skill to {skill_dst}")
 
 
 if __name__ == "__main__":
