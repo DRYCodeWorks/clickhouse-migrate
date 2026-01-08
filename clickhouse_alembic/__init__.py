@@ -24,11 +24,7 @@ def __getattr__(name: str) -> Any:
 
         return get_env_config
     elif name in ("get_secret", "SSMSecretNotFoundError", "SSMJsonKeyError"):
-        from clickhouse_alembic.secrets import (
-            SSMJsonKeyError,
-            SSMSecretNotFoundError,
-            get_secret,
-        )
+        from clickhouse_alembic.secrets import SSMJsonKeyError, SSMSecretNotFoundError, get_secret
 
         return {
             "get_secret": get_secret,

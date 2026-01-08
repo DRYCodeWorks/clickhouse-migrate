@@ -23,6 +23,8 @@ environments:
     host: your-dev-instance.clickhouse.cloud
     database: {project_name}_dev
     migration_user: migration_dev
+    # Optional: AWS region for SSM lookups (uses AWS default if not set)
+    # aws_region: us-east-1
     # Optional SSM paths (if set, fetches from SSM directly)
     # Supports JSON key extraction: /path/to/param#json_key
     # ssm:

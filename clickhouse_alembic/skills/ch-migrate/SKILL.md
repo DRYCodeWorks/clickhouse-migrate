@@ -65,6 +65,7 @@ environments:
     host: dev.clickhouse.cloud  # or localhost for Docker
     database: my_project_dev
     migration_user: migration_dev
+    # aws_region: us-east-1  # Optional: for region-scoped SSM lookups
     # Optional SSM paths (if set, fetches from SSM directly):
     # Supports JSON key extraction: /path/to/param#json_key
     # ssm:

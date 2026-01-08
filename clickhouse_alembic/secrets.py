@@ -17,8 +17,13 @@ class SSMJsonKeyError(Exception):
     pass
 
 
-def _get_ssm_client():  # type: ignore[no-untyped-def]
-    """Get boto3 SSM client, raising helpful error if boto3 not installed."""
+def _get_ssm_client(region: Optional[str] = None):  # type: ignore[no-untyped-def]
+    """Get boto3 SSM client, raising helpful error if boto3 not installed.
+
+    Args:
+        region: Optional AWS region name (e.g., 'us-east-1'). If not provided,
+                uses AWS_REGION environment variable or default from AWS config.
+    """
     try:
         import boto3  # type: ignore[import-not-found,import-untyped]
     except ImportError:
@@ -26,6 +31,8 @@ def _get_ssm_client():  # type: ignore[no-untyped-def]
             "boto3 is required for SSM support. "
             "Install with: pip install clickhouse-alembic[ssm]"
         )
+    if region:
+        return boto3.client("ssm", region_name=region)
     return boto3.client("ssm")
 
 
@@ -68,6 +75,7 @@ def get_secret(
     key: str,
     *,
     ssm_path: Optional[Union[str, dict]] = None,
+    aws_region: Optional[str] = None,
     required: bool = True,
 ) -> Optional[str]:
     """
@@ -88,6 +96,7 @@ def get_secret(
         env_name: Environment name (dev, staging, production)
         key: Secret key (migration_password, admin_password, dict_reader_password)
         ssm_path: Optional SSM parameter path (string or dict with path/json_key)
+        aws_region: Optional AWS region for SSM lookups (e.g., 'us-east-1')
         required: Whether to raise if secret not found
 
     Returns:
@@ -102,7 +111,7 @@ def get_secret(
     # If SSM path provided, use SSM directly (don't check env vars)
     if ssm_path:
         path, json_key = _parse_ssm_path(ssm_path)
-        client = _get_ssm_client()
+        client = _get_ssm_client(aws_region)
         ClientError = _get_ssm_exceptions()
         try:
             response = client.get_parameter(Name=path, WithDecryption=True)

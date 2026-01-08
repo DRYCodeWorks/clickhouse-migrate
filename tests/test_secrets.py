@@ -157,3 +157,27 @@ class TestSSMJsonKeyExtraction:
 
         with pytest.raises(SSMJsonKeyError, match="not valid JSON"):
             get_secret("dev", "password", ssm_path="/database/credentials#password")
+
+
+class TestAWSRegion:
+    @patch("clickhouse_alembic.secrets._get_ssm_client")
+    def test_passes_region_to_ssm_client(self, mock_get_client):
+        mock_client = Mock()
+        mock_client.get_parameter.return_value = {"Parameter": {"Value": "secret123"}}
+        mock_get_client.return_value = mock_client
+
+        result = get_secret("dev", "password", ssm_path="/path/to/secret", aws_region="us-west-2")
+
+        assert result == "secret123"
+        mock_get_client.assert_called_once_with("us-west-2")
+
+    @patch("clickhouse_alembic.secrets._get_ssm_client")
+    def test_none_region_uses_default(self, mock_get_client):
+        mock_client = Mock()
+        mock_client.get_parameter.return_value = {"Parameter": {"Value": "secret123"}}
+        mock_get_client.return_value = mock_client
+
+        result = get_secret("dev", "password", ssm_path="/path/to/secret", aws_region=None)
+
+        assert result == "secret123"
+        mock_get_client.assert_called_once_with(None)

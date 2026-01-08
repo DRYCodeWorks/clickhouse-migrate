@@ -67,12 +67,16 @@ def get_env_config(env_name: str, config_path: Path) -> dict[str, Any]:
     if ssm_config:
         env_config["ssm"] = ssm_config
 
+    # Get AWS region for SSM lookups (optional, uses AWS default if not set)
+    aws_region = env_config.get("aws_region")
+
     # Load secrets using unified get_secret() - uses SSM if configured, otherwise env vars
     # Migration password is required
     password = get_secret(
         env_name,
         "migration_password",
         ssm_path=ssm_config.get("migration_password"),
+        aws_region=aws_region,
         required=True,
     )
     env_config["password"] = password  # Legacy field for backward compat
@@ -82,6 +86,7 @@ def get_env_config(env_name: str, config_path: Path) -> dict[str, Any]:
         env_name,
         "admin_password",
         ssm_path=ssm_config.get("admin_password"),
+        aws_region=aws_region,
         required=False,
     )
 
@@ -90,6 +95,7 @@ def get_env_config(env_name: str, config_path: Path) -> dict[str, Any]:
         env_name,
         "dict_reader_password",
         ssm_path=ssm_config.get("dict_reader_password"),
+        aws_region=aws_region,
         required=False,
     )
 
@@ -98,6 +104,7 @@ def get_env_config(env_name: str, config_path: Path) -> dict[str, Any]:
         env_name,
         "mcp_password",
         ssm_path=ssm_config.get("mcp_password"),
+        aws_region=aws_region,
         required=False,
     )
 

@@ -201,11 +201,15 @@ def run_bootstrap(
     # Get SSM paths if configured
     ssm_config = env_config.get("ssm", {})
 
+    # Get AWS region for SSM lookups (optional, uses AWS default if not set)
+    aws_region = env_config.get("aws_region")
+
     # Get required credentials
     admin_password = get_secret(
         env_name,
         "admin_password",
         ssm_path=ssm_config.get("admin_password"),
+        aws_region=aws_region,
         required=True,
     )
 
@@ -213,6 +217,7 @@ def run_bootstrap(
         env_name,
         "migration_password",
         ssm_path=ssm_config.get("migration_password"),
+        aws_region=aws_region,
         required=True,
     )
     assert admin_password is not None  # required=True ensures this
@@ -226,6 +231,7 @@ def run_bootstrap(
             env_name,
             "dict_reader_password",
             ssm_path=ssm_config.get("dict_reader_password"),
+            aws_region=aws_region,
             required=True,
         )
 
@@ -236,6 +242,7 @@ def run_bootstrap(
             env_name,
             "mcp_password",
             ssm_path=ssm_config.get("mcp_password"),
+            aws_region=aws_region,
             required=True,
         )
 
