@@ -9,22 +9,31 @@ defaults:
   port: 8443
   secure: true
   admin_user: default
-  dict_reader_name: dict_reader
+  # Optional: dict_reader for dictionary sources
+  # dict_reader_name: dict_reader
+  # Optional: mcp_user for read-only MCP tool access
+  # mcp_user_name: mcp_reader
 
 # Environment-specific configuration
-# Passwords are loaded from environment variables: CH_<ENV>_PASSWORD, CH_<ENV>_ADMIN_PASSWORD
+# Passwords loaded from: .env.local (CH_<ENV>_PASSWORD) or SSM (if configured)
 environments:
   dev:
     host: your-dev-instance.clickhouse.cloud
     database: {project_name}_dev
-    user: service_dev
+    migration_user: migration_dev
+    # Optional SSM paths (env vars take precedence)
+    # ssm:
+    #   admin_password: /{project_name}/dev/admin_password
+    #   migration_password: /{project_name}/dev/migration_password
+    #   dict_reader_password: /{project_name}/dev/dict_reader_password
+    #   mcp_password: /{project_name}/dev/mcp_password
 
   staging:
     host: your-staging-instance.clickhouse.cloud
     database: {project_name}_staging
-    user: service_staging
+    migration_user: migration_staging
 
   production:
     host: your-prod-instance.clickhouse.cloud
     database: {project_name}
-    user: service_prod
+    migration_user: migration_prod
