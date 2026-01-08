@@ -210,9 +210,11 @@ def upgrade():
 
 | Role | Purpose |
 |------|---------|
-| `{project}_migration_role` | Full access for migrations |
+| `{project}_migration_role` | Schema changes (CREATE/DROP/ALTER TABLE/VIEW/DICTIONARY), data ops (SELECT/INSERT/DELETE/TRUNCATE), introspection |
 | `{project}_readonly_role` | SELECT + SHOW (if mcp_user configured) |
 | `{project}_dict_role` | Dictionary source access (if dict_reader configured) |
+
+Note: Bootstrap uses explicit grants (not `GRANT ALL`) for ClickHouse Cloud compatibility.
 
 ## Troubleshooting
 
