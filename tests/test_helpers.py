@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from clickhouse_alembic.helpers import get_db, read_sql
+from clickhouse_alembic.helpers import _parse_source_table, get_db, read_sql
 
 
 class TestReadSql:
@@ -47,3 +47,37 @@ class TestGetDb:
     def test_returns_default_when_not_set(self, monkeypatch):
         monkeypatch.delenv("CH_DATABASE", raising=False)
         assert get_db() == "default"
+
+
+class TestParseSourceTable:
+    def test_parses_table_pattern(self):
+        sql = """
+        CREATE DICTIONARY mydb.dict_users
+        (id UInt64, name String)
+        PRIMARY KEY id
+        SOURCE(CLICKHOUSE(TABLE 'users' DB 'mydb'))
+        """
+        assert _parse_source_table(sql) == "users"
+
+    def test_parses_query_pattern(self):
+        sql = """
+        CREATE DICTIONARY mydb.dict_orders
+        (id UInt64, total Decimal(10,2))
+        PRIMARY KEY id
+        SOURCE(CLICKHOUSE(QUERY 'SELECT id, total FROM mydb.orders WHERE active = 1'))
+        """
+        assert _parse_source_table(sql) == "orders"
+
+    def test_returns_none_when_no_source(self):
+        sql = "CREATE DICTIONARY mydb.dict_static (id UInt64) PRIMARY KEY id"
+        assert _parse_source_table(sql) is None
+
+    def test_handles_multiline_query(self):
+        sql = """
+        SOURCE(CLICKHOUSE(QUERY '
+            SELECT id, name
+            FROM mydb.customers
+            WHERE status = 1
+        '))
+        """
+        assert _parse_source_table(sql) == "customers"
