@@ -2,13 +2,22 @@
 
 Alembic-based migrations for ClickHouse, optimized for ClickHouse Cloud.
 
+## What is ch-migrate?
+
+`ch-migrate` is a CLI tool for managing ClickHouse schema migrations. It:
+- Initializes project structure with config files
+- Bootstraps databases with proper roles and users
+- Runs Alembic migrations against ClickHouse
+
 ## Features
 
 - **Multi-environment support** - Manage dev, staging, and production with separate configs
 - **ClickHouse Cloud optimized** - Uses `SharedReplacingMergeTree`, handles non-transactional DDL
+- **Role-based access control** - Creates roles for migration, read-only (MCP), and dictionary access
 - **Object-centric SQL history** - Track all versions of each table/view/dictionary
 - **Zero-downtime migrations** - `EXCHANGE TABLES` pattern for safe schema changes
-- **Bootstrap command** - One-command database and user setup
+- **Bootstrap command** - One-command database and user setup (idempotent)
+- **SSM support** - Store credentials in AWS SSM Parameter Store
 - **YAML + env vars** - Config in version control, secrets in environment
 
 ## Quick Start
@@ -16,7 +25,8 @@ Alembic-based migrations for ClickHouse, optimized for ClickHouse Cloud.
 ### Installation
 
 ```bash
-pip install clickhouse-alembic
+uv add clickhouse-alembic
+# or: pip install clickhouse-alembic
 ```
 
 ### Initialize a Project
@@ -40,7 +50,7 @@ my-clickhouse-project/
 ├── .env.local.example       # Template for secrets
 ├── .gitignore
 ├── alembic.ini
-├── migrate.sh               # Migration helper script
+├── migrate.sh               # Optional shell wrapper
 └── migrations/
     ├── env.py
     ├── script.py.mako
@@ -65,53 +75,74 @@ defaults:
   port: 8443
   secure: true
   admin_user: default
-  dict_reader_name: dict_reader
+  # Optional users (uncomment to enable):
+  # dict_reader_name: dict_reader
+  # mcp_user_name: mcp_reader
 
 environments:
   dev:
     host: my-dev-instance.clickhouse.cloud
     database: my_project_dev
-    user: service_dev
+    migration_user: migration_dev
 
   production:
     host: my-prod-instance.clickhouse.cloud
     database: my_project
-    user: service_prod
+    migration_user: migration_prod
 ```
 
-2. Copy `.env.local.example` to `.env.local` and add passwords:
+2. Set up credentials (choose one):
 
+**Option A: Environment file**
 ```bash
-CH_DEV_PASSWORD=your-dev-password
+cp .env.local.example .env.local
+# Edit with your passwords:
+CH_DEV_MIGRATION_PASSWORD=your-dev-password
 CH_DEV_ADMIN_PASSWORD=your-dev-admin-password
-CH_DEV_DICT_READER_PASSWORD=your-dev-dict-password
-
-CH_PRODUCTION_PASSWORD=your-prod-password
-CH_PRODUCTION_ADMIN_PASSWORD=your-prod-admin-password
-CH_PRODUCTION_DICT_READER_PASSWORD=your-prod-dict-password
 ```
+
+**Option B: AWS SSM** (for production)
+```yaml
+# In config.yaml, add ssm paths:
+environments:
+  production:
+    host: my-prod-instance.clickhouse.cloud
+    database: my_project
+    migration_user: migration_prod
+    ssm:
+      admin_password: /my_project/prod/admin_password
+      migration_password: /my_project/prod/migration_password
+```
+
+Install SSM support: `pip install clickhouse-alembic[ssm]`
 
 ### Bootstrap Database
 
 ```bash
-# Creates database, dict_reader user, and service user
-./migrate.sh dev bootstrap
+# Creates database, roles, and users
+ch-migrate bootstrap dev
+
+# Preview without executing
+ch-migrate bootstrap dev --dry-run
 ```
 
 ### Create and Run Migrations
 
 ```bash
 # Create a new migration
-./migrate.sh dev new create_users_table
+ch-migrate new dev create_users_table
 
 # Run pending migrations
-./migrate.sh dev up
+ch-migrate up dev
 
 # Check status
-./migrate.sh dev status
+ch-migrate status dev
 
 # Rollback last migration
-./migrate.sh dev down
+ch-migrate down dev
+
+# Show history
+ch-migrate history dev
 ```
 
 ## Migration Patterns
@@ -172,17 +203,6 @@ def upgrade():
     op.execute(f"DROP TABLE {db}.users_new")
 ```
 
-### Materialized View Query Updates
-
-Use `MODIFY QUERY` to update MV logic without losing data:
-
-```python
-def upgrade():
-    db = get_db()
-    query = read_sql("history/views/stats_mv/queries/002_xyz789.sql", db=db)
-    op.execute(f"ALTER TABLE {db}.stats_mv MODIFY QUERY {query}")
-```
-
 ### Dictionary with Auto-Grant
 
 ```python
@@ -199,16 +219,23 @@ def upgrade():
 # Initialize new project
 ch-migrate init [PATH] [--name NAME]
 
-# Bootstrap database (create DB, users)
-ch-migrate bootstrap <environment>
+# Bootstrap database (create DB, roles, users)
+ch-migrate bootstrap <environment> [--dry-run]
 
-# Via migrate.sh wrapper:
-./migrate.sh <env> status      # Show migration status
-./migrate.sh <env> up          # Apply pending migrations
-./migrate.sh <env> down        # Rollback last migration
-./migrate.sh <env> new <name>  # Create new migration
-./migrate.sh <env> history     # Show full history
-./migrate.sh <env> bootstrap   # Initialize database
+# Apply pending migrations
+ch-migrate up <environment>
+
+# Rollback last migration
+ch-migrate down <environment> [--revision REV]
+
+# Show current status
+ch-migrate status <environment>
+
+# Show migration history
+ch-migrate history <environment>
+
+# Create new migration
+ch-migrate new <environment> <name>
 ```
 
 ## Configuration Reference
@@ -223,24 +250,40 @@ defaults:                   # Inherited by all environments
   port: 8443
   secure: true
   admin_user: default
-  dict_reader_name: dict_reader
+  # dict_reader_name: dict_reader    # Uncomment to enable
+  # mcp_user_name: mcp_reader        # Uncomment to enable
 
 environments:
   dev:
     host: dev.clickhouse.cloud
     database: my_project_dev
-    user: service_dev
-    # port: 8443            # Override default
-    # secure: true          # Override default
+    migration_user: migration_dev
+    # SSM paths (optional, env vars take precedence):
+    # ssm:
+    #   admin_password: /my_project/dev/admin_password
+    #   migration_password: /my_project/dev/migration_password
 ```
 
 ### Environment Variables
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `CH_<ENV>_PASSWORD` | Yes | Service user password |
+| `CH_<ENV>_MIGRATION_PASSWORD` | Yes | Migration user password |
 | `CH_<ENV>_ADMIN_PASSWORD` | For bootstrap | Admin password for creating users |
-| `CH_<ENV>_DICT_READER_PASSWORD` | For dictionaries | dict_reader user password |
+| `CH_<ENV>_DICT_READER_PASSWORD` | If dict_reader enabled | dict_reader user password |
+| `CH_<ENV>_MCP_PASSWORD` | If mcp_user enabled | MCP user password |
+
+Legacy `CH_<ENV>_PASSWORD` is supported for backward compatibility.
+
+## Roles and Users
+
+Bootstrap creates the following roles:
+
+| Role | Purpose |
+|------|---------|
+| `{project}_migration_role` | Full access for migrations (required) |
+| `{project}_readonly_role` | Read-only for MCP tools (optional) |
+| `{project}_dict_role` | Dictionary source access (optional) |
 
 ## ClickHouse Cloud Notes
 
