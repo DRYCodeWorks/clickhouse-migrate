@@ -1,10 +1,14 @@
 """Command-line interface for clickhouse-alembic."""
 
+import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
 import click
+
+from clickhouse_alembic.config import get_env_config
 
 
 def get_template_path(name: str) -> Path:
@@ -20,10 +24,48 @@ def render_template(template_path: Path, **kwargs: str) -> str:
     return content
 
 
+def _run_alembic(environment: str, args: list[str]) -> None:
+    """Run alembic with environment configuration."""
+    config_path = Path.cwd() / "config.yaml"
+
+    try:
+        env_config = get_env_config(environment, config_path)
+    except Exception as e:
+        click.echo(f"Error loading config: {e}", err=True)
+        sys.exit(1)
+
+    # Set environment variables for alembic
+    env = os.environ.copy()
+    env["CH_DATABASE"] = env_config["database"]
+    env["CH_HOST"] = env_config["host"]
+    env["CH_PORT"] = str(env_config.get("port", 8443))
+    env["CH_USER"] = env_config.get("migration_user") or env_config.get("user", "")
+    env["CH_PASSWORD"] = env_config.get("password", "")
+    env["CH_SECURE"] = "1" if env_config.get("secure", True) else "0"
+
+    result = subprocess.run(
+        ["alembic"] + args,
+        env=env,
+        cwd=Path.cwd(),
+    )
+    sys.exit(result.returncode)
+
+
 @click.group()
 @click.version_option()
 def main() -> None:
-    """ClickHouse migration tool built on Alembic."""
+    """ClickHouse migration tool built on Alembic.
+
+    ch-migrate provides a unified CLI for managing ClickHouse database migrations.
+    It handles project initialization, database bootstrapping, and running migrations.
+
+    \b
+    Quick start:
+      ch-migrate init                    # Initialize a new project
+      ch-migrate bootstrap dev           # Set up database and users
+      ch-migrate up dev                  # Apply pending migrations
+      ch-migrate status dev              # Check migration status
+    """
     pass
 
 
@@ -100,25 +142,81 @@ def init(path: str, name: str | None) -> None:
     click.echo("")
     click.echo("  1. Edit config.yaml with your ClickHouse hosts")
     click.echo("  2. Copy .env.local.example to .env.local and add passwords")
-    click.echo("  3. Run: ./migrate.sh dev bootstrap")
-    click.echo("  4. Create your first migration: ./migrate.sh dev new create_users_table")
+    click.echo("  3. Run: ch-migrate bootstrap dev")
+    click.echo("  4. Create your first migration: ch-migrate new dev create_users_table")
 
 
 @main.command()
 @click.argument("environment")
-def bootstrap(environment: str) -> None:
+@click.option("--dry-run", is_flag=True, help="Show SQL without executing")
+def bootstrap(environment: str, dry_run: bool) -> None:
     """Initialize database and users for an environment.
 
-    Creates the database, dict_reader user, and service user.
-    Requires admin credentials in .env.local.
+    Creates the database, roles, and users (migration user, optional MCP user,
+    optional dict_reader user). Safe to run multiple times (idempotent).
+
+    Requires admin credentials in .env.local or SSM.
     """
     from clickhouse_alembic.bootstrap import run_bootstrap
 
     try:
-        run_bootstrap(environment)
+        run_bootstrap(environment, dry_run=dry_run)
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
+
+
+@main.command()
+@click.argument("environment")
+def up(environment: str) -> None:
+    """Apply pending migrations.
+
+    Runs all unapplied migrations to bring the database to the latest version.
+    """
+    _run_alembic(environment, ["upgrade", "head"])
+
+
+@main.command()
+@click.argument("environment")
+@click.option("--revision", "-r", default="-1", help="Revision to downgrade to (default: -1)")
+def down(environment: str, revision: str) -> None:
+    """Rollback migrations.
+
+    By default, rolls back the last migration. Use --revision to specify a target.
+    """
+    _run_alembic(environment, ["downgrade", revision])
+
+
+@main.command()
+@click.argument("environment")
+def status(environment: str) -> None:
+    """Show migration status.
+
+    Displays the current revision and any pending migrations.
+    """
+    _run_alembic(environment, ["current", "-v"])
+
+
+@main.command()
+@click.argument("environment")
+def history(environment: str) -> None:
+    """Show migration history.
+
+    Lists all migrations with their revision IDs and descriptions.
+    """
+    _run_alembic(environment, ["history", "-v"])
+
+
+@main.command()
+@click.argument("environment")
+@click.argument("name")
+def new(environment: str, name: str) -> None:
+    """Create a new migration.
+
+    Creates a new migration file with the given name. Edit the generated file
+    to add your upgrade() and downgrade() logic.
+    """
+    _run_alembic(environment, ["revision", "-m", name])
 
 
 if __name__ == "__main__":
