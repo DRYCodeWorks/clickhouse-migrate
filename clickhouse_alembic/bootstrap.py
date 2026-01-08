@@ -112,18 +112,20 @@ def build_bootstrap_sql(
         f"CREATE ROLE IF NOT EXISTS {project}_migration_role;",
         "",
         "-- Schema operations",
-        f"GRANT CREATE TABLE, DROP TABLE, ALTER ON {db}.* TO {project}_migration_role;",
+        f"GRANT CREATE TABLE, DROP TABLE, UNDROP TABLE, ALTER ON {db}.* TO {project}_migration_role;",
+        f"GRANT RENAME TABLE ON {db}.* TO {project}_migration_role;",
         f"GRANT CREATE VIEW, DROP VIEW ON {db}.* TO {project}_migration_role;",
         f"GRANT CREATE DICTIONARY, DROP DICTIONARY ON {db}.* TO {project}_migration_role;",
         "",
         "-- Data operations",
-        f"GRANT SELECT, INSERT, DELETE, TRUNCATE ON {db}.* TO {project}_migration_role;",
+        f"GRANT SELECT, INSERT, DELETE, TRUNCATE, OPTIMIZE ON {db}.* TO {project}_migration_role;",
         "",
         "-- Introspection (needed by Alembic)",
         f"GRANT SHOW TABLES, SHOW COLUMNS, SHOW DICTIONARIES ON {db}.* TO {project}_migration_role;",
         "",
-        "-- Temp tables and EXCHANGE TABLES (for zero-downtime migrations)",
+        "-- Temp tables and atomic swaps (for zero-downtime migrations)",
         f"GRANT CREATE TEMPORARY TABLE ON *.* TO {project}_migration_role;",
+        f"GRANT EXCHANGE TABLES ON {db}.* TO {project}_migration_role;",
     ]
 
     # MCP readonly role (optional)
