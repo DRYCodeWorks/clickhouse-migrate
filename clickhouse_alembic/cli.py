@@ -245,29 +245,49 @@ def history(environment: str) -> None:
 @main.command()
 @click.argument("environment")
 @click.argument("name")
-@click.option("--table", "-t", "object_type", flag_value="table", help="Create table SQL file")
-@click.option("--view", "-v", "object_type", flag_value="view", help="Create view SQL file")
+@click.option("--table", "-t", "table_name", help="Create SQL file for table (e.g., --table users)")
 @click.option(
-    "--dict", "-d", "object_type", flag_value="dictionary", help="Create dictionary SQL file"
+    "--view", "-v", "view_name", help="Create SQL file for view (e.g., --view active_users)"
 )
-def new(environment: str, name: str, object_type: str | None) -> None:
+@click.option(
+    "--dict", "-d", "dict_name", help="Create SQL file for dictionary (e.g., --dict regions)"
+)
+def new(
+    environment: str,
+    name: str,
+    table_name: str | None,
+    view_name: str | None,
+    dict_name: str | None,
+) -> None:
     """Create a new migration.
 
     Creates a new migration file with the given name. Edit the generated file
     to add your upgrade() and downgrade() logic.
 
-    Use --table, --view, or --dict to also create a SQL history file.
+    Use --table, --view, or --dict with the object name to create a SQL history file:
+
+        ch-migrate new dev add_status_column --table logs
     """
     result = _run_alembic(environment, ["revision", "-m", name], exit_on_complete=False)
 
     if result is None or result.returncode != 0:
         sys.exit(1 if result is None else result.returncode)
 
-    # If object_type specified, create SQL file
-    if object_type:
+    # Determine object type and name from options
+    object_name: str | None = None
+    object_type: str | None = None
+    if table_name:
+        object_name, object_type = table_name, "table"
+    elif view_name:
+        object_name, object_type = view_name, "view"
+    elif dict_name:
+        object_name, object_type = dict_name, "dictionary"
+
+    # If object specified, create SQL file
+    if object_name and object_type:
         revision = _extract_revision_from_output(result.stdout)
         if revision:
-            sql_path = _create_sql_file(name, object_type, revision)
+            sql_path = _create_sql_file(object_name, object_type, revision)
             if sql_path:
                 click.echo(f"  Created {sql_path.relative_to(Path.cwd())}")
         else:
