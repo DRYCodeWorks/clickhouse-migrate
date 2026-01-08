@@ -49,7 +49,19 @@ def _run_alembic(environment: str, args: list[str]) -> None:
         ["alembic"] + args,
         env=env,
         cwd=Path.cwd(),
+        capture_output=True,
+        text=True,
     )
+
+    # Show output from alembic
+    if result.stdout:
+        click.echo(result.stdout)
+    if result.stderr:
+        click.echo(result.stderr, err=True)
+
+    if result.returncode != 0:
+        click.echo(f"Alembic command failed with exit code {result.returncode}", err=True)
+
     sys.exit(result.returncode)
 
 
@@ -151,7 +163,8 @@ def init(path: str, name: str | None) -> None:
 @main.command()
 @click.argument("environment")
 @click.option("--dry-run", is_flag=True, help="Show SQL without executing")
-def bootstrap(environment: str, dry_run: bool) -> None:
+@click.option("--verbose", "-v", is_flag=True, help="Show SQL statements as they execute")
+def bootstrap(environment: str, dry_run: bool, verbose: bool) -> None:
     """Initialize database and users for an environment.
 
     Creates the database, roles, and users (migration user, optional MCP user,
@@ -162,7 +175,7 @@ def bootstrap(environment: str, dry_run: bool) -> None:
     from clickhouse_alembic.bootstrap import run_bootstrap
 
     try:
-        run_bootstrap(environment, dry_run=dry_run)
+        run_bootstrap(environment, dry_run=dry_run, verbose=verbose)
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
