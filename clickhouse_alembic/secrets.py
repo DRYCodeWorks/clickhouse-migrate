@@ -10,10 +10,10 @@ class SSMSecretNotFoundError(Exception):
     pass
 
 
-def _get_ssm_client():
+def _get_ssm_client():  # type: ignore[no-untyped-def]
     """Get boto3 SSM client, raising helpful error if boto3 not installed."""
     try:
-        import boto3
+        import boto3  # type: ignore[import-not-found]
     except ImportError:
         raise ImportError(
             "boto3 is required for SSM support. "
@@ -64,12 +64,10 @@ def get_secret(
         client = _get_ssm_client()
         try:
             response = client.get_parameter(Name=ssm_path, WithDecryption=True)
-            return response["Parameter"]["Value"]
+            return response["Parameter"]["Value"]  # type: ignore[no-any-return]
         except Exception as e:
             if required:
-                raise SSMSecretNotFoundError(
-                    f"SSM parameter not found: {ssm_path}. Error: {e}"
-                )
+                raise SSMSecretNotFoundError(f"SSM parameter not found: {ssm_path}. Error: {e}")
             return None
 
     # Not found anywhere

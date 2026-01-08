@@ -7,8 +7,12 @@ Usage:
 
 __version__ = "0.1.0"
 
+
+from typing import Any
+
+
 # Lazy imports to avoid import errors before dependencies are created
-def __getattr__(name: str):
+def __getattr__(name: str) -> Any:
     if name in ("read_sql", "get_db", "create_dictionary"):
         from clickhouse_alembic.helpers import create_dictionary, get_db, read_sql
 
