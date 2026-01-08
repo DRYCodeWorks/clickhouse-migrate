@@ -66,9 +66,10 @@ environments:
     database: my_project_dev
     migration_user: migration_dev
     # Optional SSM paths (if set, fetches from SSM directly):
+    # Supports JSON key extraction: /path/to/param#json_key
     # ssm:
     #   admin_password: /my_project/dev/admin_password
-    #   migration_password: /my_project/dev/migration_password
+    #   migration_password: /my_project/credentials#password
 
   staging:
     host: staging.clickhouse.cloud

@@ -1,10 +1,16 @@
 """Tests for secrets module."""
 
+import json
 from unittest.mock import Mock, patch
 
 import pytest
 
-from clickhouse_alembic.secrets import SSMSecretNotFoundError, get_secret
+from clickhouse_alembic.secrets import (
+    SSMJsonKeyError,
+    SSMSecretNotFoundError,
+    _parse_ssm_path,
+    get_secret,
+)
 
 
 class TestGetSecret:
@@ -78,3 +84,76 @@ class TestGetSecret:
         with patch.dict("sys.modules", {"boto3": None}):
             with pytest.raises(ImportError, match="boto3.*pip install clickhouse-alembic\\[ssm\\]"):
                 get_secret("dev", "password", ssm_path="/some/path")
+
+
+class TestParseSSMPath:
+    def test_simple_string_path(self):
+        path, json_key = _parse_ssm_path("/myproject/dev/password")
+        assert path == "/myproject/dev/password"
+        assert json_key is None
+
+    def test_string_path_with_hash_suffix(self):
+        path, json_key = _parse_ssm_path("/database/credentials#password")
+        assert path == "/database/credentials"
+        assert json_key == "password"
+
+    def test_dict_path_without_json_key(self):
+        path, json_key = _parse_ssm_path({"path": "/myproject/dev/password"})
+        assert path == "/myproject/dev/password"
+        assert json_key is None
+
+    def test_dict_path_with_json_key(self):
+        path, json_key = _parse_ssm_path({"path": "/database/credentials", "json_key": "password"})
+        assert path == "/database/credentials"
+        assert json_key == "password"
+
+
+class TestSSMJsonKeyExtraction:
+    @patch("clickhouse_alembic.secrets._get_ssm_client")
+    def test_extracts_json_key_with_hash_suffix(self, mock_get_client):
+        mock_client = Mock()
+        mock_client.get_parameter.return_value = {
+            "Parameter": {"Value": json.dumps({"password": "secret123", "user": "admin"})}
+        }
+        mock_get_client.return_value = mock_client
+
+        result = get_secret("dev", "password", ssm_path="/database/credentials#password")
+        assert result == "secret123"
+        mock_client.get_parameter.assert_called_once_with(
+            Name="/database/credentials", WithDecryption=True
+        )
+
+    @patch("clickhouse_alembic.secrets._get_ssm_client")
+    def test_extracts_json_key_with_dict_syntax(self, mock_get_client):
+        mock_client = Mock()
+        mock_client.get_parameter.return_value = {
+            "Parameter": {"Value": json.dumps({"password": "secret456", "user": "root"})}
+        }
+        mock_get_client.return_value = mock_client
+
+        result = get_secret(
+            "dev",
+            "password",
+            ssm_path={"path": "/database/credentials", "json_key": "password"},
+        )
+        assert result == "secret456"
+
+    @patch("clickhouse_alembic.secrets._get_ssm_client")
+    def test_raises_when_json_key_not_found(self, mock_get_client):
+        mock_client = Mock()
+        mock_client.get_parameter.return_value = {
+            "Parameter": {"Value": json.dumps({"user": "admin"})}
+        }
+        mock_get_client.return_value = mock_client
+
+        with pytest.raises(SSMJsonKeyError, match="JSON key 'password' not found"):
+            get_secret("dev", "password", ssm_path="/database/credentials#password")
+
+    @patch("clickhouse_alembic.secrets._get_ssm_client")
+    def test_raises_when_value_not_valid_json(self, mock_get_client):
+        mock_client = Mock()
+        mock_client.get_parameter.return_value = {"Parameter": {"Value": "not-json"}}
+        mock_get_client.return_value = mock_client
+
+        with pytest.raises(SSMJsonKeyError, match="not valid JSON"):
+            get_secret("dev", "password", ssm_path="/database/credentials#password")

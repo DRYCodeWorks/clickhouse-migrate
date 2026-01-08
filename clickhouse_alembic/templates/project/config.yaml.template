@@ -24,9 +24,10 @@ environments:
     database: {project_name}_dev
     migration_user: migration_dev
     # Optional SSM paths (if set, fetches from SSM directly)
+    # Supports JSON key extraction: /path/to/param#json_key
     # ssm:
     #   admin_password: /{project_name}/dev/admin_password
-    #   migration_password: /{project_name}/dev/migration_password
+    #   migration_password: /{project_name}/dev/credentials#password
     #   dict_reader_password: /{project_name}/dev/dict_reader_password
     #   mcp_password: /{project_name}/dev/mcp_password
 

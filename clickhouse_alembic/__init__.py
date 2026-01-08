@@ -23,10 +23,18 @@ def __getattr__(name: str) -> Any:
         from clickhouse_alembic.config import get_env_config
 
         return get_env_config
-    elif name in ("get_secret", "SSMSecretNotFoundError"):
-        from clickhouse_alembic.secrets import SSMSecretNotFoundError, get_secret
+    elif name in ("get_secret", "SSMSecretNotFoundError", "SSMJsonKeyError"):
+        from clickhouse_alembic.secrets import (
+            SSMJsonKeyError,
+            SSMSecretNotFoundError,
+            get_secret,
+        )
 
-        return {"get_secret": get_secret, "SSMSecretNotFoundError": SSMSecretNotFoundError}[name]
+        return {
+            "get_secret": get_secret,
+            "SSMSecretNotFoundError": SSMSecretNotFoundError,
+            "SSMJsonKeyError": SSMJsonKeyError,
+        }[name]
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
@@ -38,4 +46,5 @@ __all__ = [
     "create_dictionary",
     "get_secret",
     "SSMSecretNotFoundError",
+    "SSMJsonKeyError",
 ]
