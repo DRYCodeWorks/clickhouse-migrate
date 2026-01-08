@@ -74,54 +74,64 @@ def build_bootstrap_sql(
 
     # MCP readonly role (optional)
     if mcp_user_name and mcp_password:
-        lines.extend([
-            "",
-            "-- Read-only role: for MCP tools",
-            f"CREATE ROLE IF NOT EXISTS {project}_readonly_role;",
-            f"GRANT SELECT ON {db}.* TO {project}_readonly_role;",
-            f"GRANT SHOW TABLES ON {db}.* TO {project}_readonly_role;",
-        ])
+        lines.extend(
+            [
+                "",
+                "-- Read-only role: for MCP tools",
+                f"CREATE ROLE IF NOT EXISTS {project}_readonly_role;",
+                f"GRANT SELECT ON {db}.* TO {project}_readonly_role;",
+                f"GRANT SHOW TABLES ON {db}.* TO {project}_readonly_role;",
+            ]
+        )
 
     # Dict reader role (optional)
     if dict_reader_name and dict_reader_password:
-        lines.extend([
-            "",
-            "-- Dict reader role: for dictionary sources",
-            f"CREATE ROLE IF NOT EXISTS {project}_dict_role;",
-            "-- SELECT grants added per-table when dictionaries are created",
-        ])
+        lines.extend(
+            [
+                "",
+                "-- Dict reader role: for dictionary sources",
+                f"CREATE ROLE IF NOT EXISTS {project}_dict_role;",
+                "-- SELECT grants added per-table when dictionaries are created",
+            ]
+        )
 
-    lines.extend([
-        "",
-        "-- =============================================================================",
-        "-- USERS",
-        "-- =============================================================================",
-        "",
-        "-- Migration user (required)",
-        f"CREATE USER IF NOT EXISTS {migration_user}",
-        f"IDENTIFIED BY '{escape_sql_string(migration_password)}';",
-        f"GRANT {project}_migration_role TO {migration_user};",
-    ])
+    lines.extend(
+        [
+            "",
+            "-- =============================================================================",
+            "-- USERS",
+            "-- =============================================================================",
+            "",
+            "-- Migration user (required)",
+            f"CREATE USER IF NOT EXISTS {migration_user}",
+            f"IDENTIFIED BY '{escape_sql_string(migration_password)}';",
+            f"GRANT {project}_migration_role TO {migration_user};",
+        ]
+    )
 
     # MCP user (optional)
     if mcp_user_name and mcp_password:
-        lines.extend([
-            "",
-            "-- MCP user: read-only access for AI tools",
-            f"CREATE USER IF NOT EXISTS {mcp_user_name}",
-            f"IDENTIFIED BY '{escape_sql_string(mcp_password)}';",
-            f"GRANT {project}_readonly_role TO {mcp_user_name};",
-        ])
+        lines.extend(
+            [
+                "",
+                "-- MCP user: read-only access for AI tools",
+                f"CREATE USER IF NOT EXISTS {mcp_user_name}",
+                f"IDENTIFIED BY '{escape_sql_string(mcp_password)}';",
+                f"GRANT {project}_readonly_role TO {mcp_user_name};",
+            ]
+        )
 
     # Dict reader user (optional)
     if dict_reader_name and dict_reader_password:
-        lines.extend([
-            "",
-            "-- Dict reader user: for dictionary sources",
-            f"CREATE USER IF NOT EXISTS {dict_reader_name}",
-            f"IDENTIFIED BY '{escape_sql_string(dict_reader_password)}';",
-            f"GRANT {project}_dict_role TO {dict_reader_name};",
-        ])
+        lines.extend(
+            [
+                "",
+                "-- Dict reader user: for dictionary sources",
+                f"CREATE USER IF NOT EXISTS {dict_reader_name}",
+                f"IDENTIFIED BY '{escape_sql_string(dict_reader_password)}';",
+                f"GRANT {project}_dict_role TO {dict_reader_name};",
+            ]
+        )
 
     return "\n".join(lines)
 
@@ -150,23 +160,28 @@ def run_bootstrap(
 
     # Get required credentials
     admin_password = get_secret(
-        env_name, "admin_password",
+        env_name,
+        "admin_password",
         ssm_path=ssm_config.get("admin_password"),
         required=True,
     )
 
     migration_password = get_secret(
-        env_name, "migration_password",
+        env_name,
+        "migration_password",
         ssm_path=ssm_config.get("migration_password"),
         required=True,
     )
+    assert admin_password is not None  # required=True ensures this
+    assert migration_password is not None  # required=True ensures this
 
     # Get optional credentials
     dict_reader_name = env_config.get("dict_reader_name")
     dict_reader_password = None
     if dict_reader_name:
         dict_reader_password = get_secret(
-            env_name, "dict_reader_password",
+            env_name,
+            "dict_reader_password",
             ssm_path=ssm_config.get("dict_reader_password"),
             required=True,
         )
@@ -175,7 +190,8 @@ def run_bootstrap(
     mcp_password = None
     if mcp_user_name:
         mcp_password = get_secret(
-            env_name, "mcp_password",
+            env_name,
+            "mcp_password",
             ssm_path=ssm_config.get("mcp_password"),
             required=True,
         )
@@ -183,9 +199,7 @@ def run_bootstrap(
     # Get migration user - support both new 'migration_user' and legacy 'user' field
     migration_user = env_config.get("migration_user") or env_config.get("user")
     if not migration_user:
-        raise ValueError(
-            f"migration_user is required in config.yaml for environment '{env_name}'"
-        )
+        raise ValueError(f"migration_user is required in config.yaml for environment '{env_name}'")
 
     # Build SQL
     project_config = env_config.get("project")

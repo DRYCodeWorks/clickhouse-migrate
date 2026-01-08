@@ -1,9 +1,10 @@
 """Tests for secrets module."""
 
-import pytest
 from unittest.mock import Mock, patch
 
-from clickhouse_alembic.secrets import get_secret, SSMSecretNotFoundError
+import pytest
+
+from clickhouse_alembic.secrets import SSMSecretNotFoundError, get_secret
 
 
 class TestGetSecret:
@@ -15,11 +16,7 @@ class TestGetSecret:
     def test_env_var_takes_precedence_over_ssm(self, monkeypatch):
         monkeypatch.setenv("CH_DEV_PASSWORD", "from-env")
         # Even with SSM config, env var wins
-        result = get_secret(
-            "dev",
-            "password",
-            ssm_path="/myproject/dev/password"
-        )
+        result = get_secret("dev", "password", ssm_path="/myproject/dev/password")
         assert result == "from-env"
 
     def test_returns_none_when_not_required_and_missing(self, monkeypatch):
@@ -37,16 +34,13 @@ class TestGetSecret:
         monkeypatch.delenv("CH_DEV_PASSWORD", raising=False)
 
         mock_client = Mock()
-        mock_client.get_parameter.return_value = {
-            "Parameter": {"Value": "from-ssm"}
-        }
+        mock_client.get_parameter.return_value = {"Parameter": {"Value": "from-ssm"}}
         mock_get_client.return_value = mock_client
 
         result = get_secret("dev", "password", ssm_path="/myproject/dev/password")
         assert result == "from-ssm"
         mock_client.get_parameter.assert_called_once_with(
-            Name="/myproject/dev/password",
-            WithDecryption=True
+            Name="/myproject/dev/password", WithDecryption=True
         )
 
     @patch("clickhouse_alembic.secrets._get_ssm_client")

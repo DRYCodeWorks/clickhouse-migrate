@@ -24,7 +24,7 @@ def load_config(config_path: Path) -> dict[str, Any]:
         raise FileNotFoundError(f"Configuration file not found: {config_path}")
 
     with open(config_path) as f:
-        return yaml.safe_load(f)
+        return yaml.safe_load(f)  # type: ignore[no-any-return]
 
 
 def get_env_config(env_name: str, config_path: Path) -> dict[str, Any]:

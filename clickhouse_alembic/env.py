@@ -26,7 +26,7 @@ from urllib.parse import quote_plus
 from alembic import context
 from alembic.ddl import impl
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, pool, text
+from sqlalchemy import Connection, create_engine, pool, text
 
 from clickhouse_alembic.config import get_env_config
 
@@ -86,7 +86,7 @@ DATABASE_NAME = env_config["database"]
 os.environ["CH_DATABASE"] = DATABASE_NAME
 
 
-def bootstrap_version_table(connection) -> None:
+def bootstrap_version_table(connection: Connection) -> None:
     """
     Create alembic_version table with ClickHouse-compatible engine.
 
@@ -107,7 +107,8 @@ def bootstrap_version_table(connection) -> None:
     """
         )
     )
-    exists = result.scalar() > 0
+    count = result.scalar()
+    exists = count is not None and count > 0
 
     if not exists:
         # Create with ClickHouse Cloud compatible engine
