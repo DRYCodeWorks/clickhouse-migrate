@@ -8,6 +8,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+import re
+from datetime import datetime
+
 import click
 from dotenv import load_dotenv
 
@@ -32,15 +35,28 @@ def render_template(template_path: Path, **kwargs: str) -> str:
     return content
 
 
-def _run_alembic(environment: str, args: list[str]) -> None:
-    """Run alembic with environment configuration."""
+def _run_alembic(
+    environment: str, args: list[str], *, exit_on_complete: bool = True
+) -> subprocess.CompletedProcess[str] | None:
+    """Run alembic with environment configuration.
+
+    Args:
+        environment: Environment name (dev, staging, production)
+        args: Arguments to pass to alembic
+        exit_on_complete: If True, exit after running. If False, return the result.
+
+    Returns:
+        CompletedProcess if exit_on_complete=False, otherwise exits.
+    """
     config_path = Path.cwd() / "config.yaml"
 
     try:
         env_config = get_env_config(environment, config_path)
     except Exception as e:
         click.echo(f"Error loading config: {e}", err=True)
-        sys.exit(1)
+        if exit_on_complete:
+            sys.exit(1)
+        return None
 
     # Set environment variables for alembic
     env = os.environ.copy()
@@ -68,7 +84,10 @@ def _run_alembic(environment: str, args: list[str]) -> None:
     if result.returncode != 0:
         click.echo(f"Alembic command failed with exit code {result.returncode}", err=True)
 
-    sys.exit(result.returncode)
+    if exit_on_complete:
+        sys.exit(result.returncode)
+
+    return result
 
 
 @click.group()
@@ -231,13 +250,82 @@ def history(environment: str) -> None:
 @main.command()
 @click.argument("environment")
 @click.argument("name")
-def new(environment: str, name: str) -> None:
+@click.option("--table", "-t", "object_type", flag_value="table", help="Create table SQL file")
+@click.option("--view", "-v", "object_type", flag_value="view", help="Create view SQL file")
+@click.option("--dict", "-d", "object_type", flag_value="dictionary", help="Create dictionary SQL file")
+def new(environment: str, name: str, object_type: str | None) -> None:
     """Create a new migration.
 
     Creates a new migration file with the given name. Edit the generated file
     to add your upgrade() and downgrade() logic.
+
+    Use --table, --view, or --dict to also create a SQL history file.
     """
-    _run_alembic(environment, ["revision", "-m", name])
+    result = _run_alembic(environment, ["revision", "-m", name], exit_on_complete=False)
+
+    if result is None or result.returncode != 0:
+        sys.exit(1 if result is None else result.returncode)
+
+    # If object_type specified, create SQL file
+    if object_type:
+        revision = _extract_revision_from_output(result.stdout)
+        if revision:
+            sql_path = _create_sql_file(name, object_type, revision)
+            if sql_path:
+                click.echo(f"  Created {sql_path.relative_to(Path.cwd())}")
+        else:
+            click.echo("Warning: Could not extract revision ID, SQL file not created", err=True)
+
+    sys.exit(0)
+
+
+def _extract_revision_from_output(stdout: str) -> str | None:
+    """Extract revision ID from alembic output by reading the generated file."""
+    # Find the generated file path from output
+    # Format: "Generating /path/to/migrations/versions/<filename>.py ...  done"
+    match = re.search(r"Generating (.+\.py)", stdout)
+    if not match:
+        return None
+
+    migration_file = Path(match.group(1))
+    if not migration_file.exists():
+        return None
+
+    # Parse revision from file content
+    content = migration_file.read_text()
+    rev_match = re.search(r'revision = ["\'](\w+)["\']', content)
+    return rev_match.group(1) if rev_match else None
+
+
+def _create_sql_file(name: str, object_type: str, revision: str) -> Path | None:
+    """Create SQL history file for a migration.
+
+    Args:
+        name: Object name (e.g., "users")
+        object_type: One of "table", "view", "dictionary"
+        revision: Alembic revision ID
+
+    Returns:
+        Path to created file, or None if failed
+    """
+    # Determine directory (tables, views, dictionaries)
+    type_dir = f"{object_type}s" if object_type != "dictionary" else "dictionaries"
+    sql_dir = Path.cwd() / "migrations" / "sql" / "history" / type_dir / name
+    sql_dir.mkdir(parents=True, exist_ok=True)
+
+    # Determine sequence number
+    existing = list(sql_dir.glob("*.sql"))
+    seq = len(existing) + 1
+
+    # Create SQL file with minimal header
+    sql_file = sql_dir / f"{seq:03d}_{revision}.sql"
+    template = f"""-- {name} {object_type} v{seq}
+-- Migration: {revision}
+-- Created: {datetime.now().strftime("%Y-%m-%d")}
+
+"""
+    sql_file.write_text(template)
+    return sql_file
 
 
 if __name__ == "__main__":
