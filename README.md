@@ -25,8 +25,14 @@ Alembic-based migrations for ClickHouse, optimized for ClickHouse Cloud.
 ### Installation
 
 ```bash
-uv add clickhouse-alembic
-# or: pip install clickhouse-alembic
+# Using uv (recommended)
+uv add git+https://github.com/DRYCodeWorks/clickhouse-migrate.git
+
+# Using pip
+pip install git+https://github.com/DRYCodeWorks/clickhouse-migrate.git
+
+# Pin to a specific version tag
+uv add git+https://github.com/DRYCodeWorks/clickhouse-migrate.git@v0.1.0
 ```
 
 ### Initialize a Project
@@ -112,8 +118,6 @@ environments:
       admin_password: /my_project/prod/admin_password
       migration_password: /my_project/prod/migration_password
 ```
-
-Install SSM support: `pip install clickhouse-alembic[ssm]`
 
 ### Bootstrap Database
 

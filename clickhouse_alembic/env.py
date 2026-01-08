@@ -33,8 +33,8 @@ from clickhouse_alembic.config import get_env_config
 # Alembic Config object
 config = context.config
 
-# Get environment name from alembic -n flag
-env_name = getattr(config.cmd_opts, "name", None) or "dev"
+# Get environment name from CH_ENVIRONMENT (set by ch-migrate CLI)
+env_name = os.environ.get("CH_ENVIRONMENT", "dev")
 
 # Load .env.local for secrets (if it exists)
 env_local = Path.cwd() / ".env.local"
@@ -91,12 +91,9 @@ def bootstrap_version_table(connection: Connection) -> None:
     Create alembic_version table with ClickHouse-compatible engine.
 
     Must be called before Alembic tries to use its version table.
+    The database must already exist (created by 'ch-migrate bootstrap').
     """
     db = DATABASE_NAME
-
-    # Ensure database exists
-    connection.execute(text(f"CREATE DATABASE IF NOT EXISTS {db}"))
-    connection.commit()
 
     # Check if version table exists
     result = connection.execute(

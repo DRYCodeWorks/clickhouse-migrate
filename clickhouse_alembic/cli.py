@@ -40,7 +40,7 @@ def _run_alembic(
     """Run alembic with environment configuration.
 
     Args:
-        environment: Environment name (dev, staging, production)
+        environment: Environment name from config.yaml
         args: Arguments to pass to alembic
         exit_on_complete: If True, exit after running. If False, return the result.
 
@@ -59,6 +59,7 @@ def _run_alembic(
 
     # Set environment variables for alembic
     env = os.environ.copy()
+    env["CH_ENVIRONMENT"] = environment
     env["CH_DATABASE"] = env_config["database"]
     env["CH_HOST"] = env_config["host"]
     env["CH_PORT"] = str(env_config.get("port", 8443))
@@ -67,7 +68,7 @@ def _run_alembic(
     env["CH_SECURE"] = "1" if env_config.get("secure", True) else "0"
 
     result = subprocess.run(
-        ["alembic", "-n", environment] + args,
+        ["alembic"] + args,
         env=env,
         cwd=Path.cwd(),
         capture_output=True,
