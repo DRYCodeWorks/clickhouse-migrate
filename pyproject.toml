@@ -16,13 +16,14 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Database",
 ]
 dependencies = [
     "alembic>=1.13.0",
     "click>=8.1.0",
     "clickhouse-connect>=0.7.0",
-    "clickhouse-sqlalchemy>=0.3.0",
     "python-dotenv>=1.0.0",
     "pyyaml>=6.0",
 ]
@@ -31,6 +32,7 @@ dependencies = [
 ch-migrate = "clickhouse_alembic.cli:main"
 
 [project.optional-dependencies]
+ssm = ["boto3>=1.28.0"]
 dev = [
     "pytest>=7.4.0",
     "pytest-cov>=4.1.0",
@@ -59,7 +61,7 @@ dev-dependencies = [
 
 [tool.black]
 line-length = 100
-target-version = ["py39", "py310", "py311", "py312"]
+target-version = ["py39", "py310", "py311", "py312", "py313", "py314"]
 
 [tool.isort]
 profile = "black"
