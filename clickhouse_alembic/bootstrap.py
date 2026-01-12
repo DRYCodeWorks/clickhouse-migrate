@@ -112,19 +112,23 @@ def build_bootstrap_sql(
         f"CREATE ROLE IF NOT EXISTS {project}_migration_role;",
         "",
         "-- Schema operations (RENAME is part of ALTER)",
-        f"GRANT CREATE TABLE, DROP TABLE, UNDROP TABLE, ALTER ON {db}.* TO {project}_migration_role;",
-        f"GRANT CREATE VIEW, DROP VIEW ON {db}.* TO {project}_migration_role;",
-        f"GRANT CREATE DICTIONARY, DROP DICTIONARY ON {db}.* TO {project}_migration_role;",
+        f"GRANT CREATE TABLE, DROP TABLE, UNDROP TABLE, ALTER ON {db}.* TO {project}_migration_role  WITH GRANT OPTION;",
+        f"GRANT CREATE VIEW, DROP VIEW ON {db}.* TO {project}_migration_role WITH GRANT OPTION;",
+        f"GRANT CREATE DICTIONARY, DROP DICTIONARY ON {db}.* TO {project}_migration_role WITH GRANT OPTION;",
+        f"GRANT CREATE USER ON *.* to {project}_migration_role WITH GRANT OPTION;",
+        f"GRANT CREATE ROLE ON *.* to {project}_migration_role WITH GRANT OPTION;",
+        f"GRANT ACCESS MANAGEMENT ON {db}.* to {project}_migration_role WITH GRANT OPTION;"
+        f"GRANT CREATE ROW POLICY, ALTER ROW POLICY, DROP ROW POLICY, SHOW ROW POLICIES ON {db}.* to {project}_migration_role WITH GRANT OPTION;"
         "",
         "-- Data operations",
-        f"GRANT SELECT, INSERT, DELETE, TRUNCATE, OPTIMIZE ON {db}.* TO {project}_migration_role;",
+        f"GRANT SELECT, INSERT, DELETE, TRUNCATE, OPTIMIZE ON {db}.* TO {project}_migration_role WITH GRANT OPTION;",
         "",
         "-- Introspection (needed by Alembic)",
-        f"GRANT SHOW TABLES, SHOW COLUMNS, SHOW DICTIONARIES ON {db}.* TO {project}_migration_role;",
+        f"GRANT SHOW TABLES, SHOW COLUMNS, SHOW DICTIONARIES ON {db}.* TO {project}_migration_role WITH GRANT OPTION;",
         "",
         "-- Temp tables (for zero-downtime migrations with EXCHANGE TABLES)",
         "-- Note: EXCHANGE TABLES requires DROP on both tables, already granted above",
-        f"GRANT CREATE TEMPORARY TABLE ON *.* TO {project}_migration_role;",
+        f"GRANT CREATE TEMPORARY TABLE ON *.* TO {project}_migration_role WITH GRANT OPTION;",
     ]
 
     # MCP readonly role (optional)
