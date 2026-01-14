@@ -80,6 +80,21 @@ class TestBuildBootstrapSql:
         assert "CREATE USER IF NOT EXISTS migration_dev" in sql
         assert "GRANT myproject_migration_role TO migration_dev" in sql
 
+    def test_includes_full_user_role_management_grants(self):
+        """Test that migration role has full user/role management privileges."""
+        sql = build_bootstrap_sql(
+            project="myproject",
+            db="myproject_dev",
+            migration_user="migration_dev",
+            migration_password="secret123",
+        )
+        # User management
+        assert "GRANT CREATE USER, ALTER USER, DROP USER ON *.* TO myproject_migration_role" in sql
+        # Role management
+        assert "GRANT CREATE ROLE, ALTER ROLE, DROP ROLE ON *.* TO myproject_migration_role" in sql
+        # ROLE ADMIN for granting roles to users
+        assert "GRANT ROLE ADMIN ON *.* TO myproject_migration_role" in sql
+
     def test_excludes_dict_reader_when_not_configured(self):
         sql = build_bootstrap_sql(
             project="myproject",
