@@ -67,8 +67,10 @@ def _run_alembic(
     env["CH_PASSWORD"] = env_config.get("password", "")
     env["CH_SECURE"] = "1" if env_config.get("secure", True) else "0"
 
+    # Use sys.executable to run alembic from the same Python environment
+    # as ch-migrate, avoiding issues with pyenv shims intercepting the call
     result = subprocess.run(
-        ["alembic"] + args,
+        [sys.executable, "-m", "alembic"] + args,
         env=env,
         cwd=Path.cwd(),
         capture_output=True,
