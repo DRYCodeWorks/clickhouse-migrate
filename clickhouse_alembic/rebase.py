@@ -14,6 +14,8 @@ class Migration:
     path: Path
     revision: str
     down_revision: str | None
+    description: str | None = None
+    create_date: str | None = None
 
 
 @dataclass
@@ -62,10 +64,24 @@ def parse_migration(path: Path) -> Migration | None:
     if not rev_match:
         return None
 
+    # Extract description from first line of module docstring
+    description = None
+    desc_match = re.search(r'^"""(.+?)$', content, re.MULTILINE)
+    if desc_match:
+        description = desc_match.group(1).strip()
+
+    # Extract create date
+    create_date = None
+    date_match = re.search(r"^Create Date:\s*(.+)$", content, re.MULTILINE)
+    if date_match:
+        create_date = date_match.group(1).strip()
+
     return Migration(
         path=path,
         revision=rev_match.group(1),
         down_revision=down_match.group(1) if down_match else None,
+        description=description,
+        create_date=create_date,
     )
 
 
