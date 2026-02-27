@@ -352,6 +352,98 @@ def _create_sql_file(name: str, object_type: str, revision: str) -> Path | None:
 
 
 @main.command()
+@click.argument("environment")
+@click.option("--onto", default=None, help="Target revision to rebase onto (skips auto-detection)")
+@click.option("--dry-run", is_flag=True, help="Show planned changes without applying")
+def rebase(environment: str, onto: str | None, dry_run: bool) -> None:
+    """Rebase dangling migration branches onto the deployed head.
+
+    Finds migrations that branch off an older revision and rewrites them
+    to branch off the current deployed head instead.
+
+    \b
+    Guided mode (detects deployed head automatically):
+      ch-migrate rebase dev
+
+    \b
+    Explicit mode (specify target revision):
+      ch-migrate rebase dev --onto abc123
+    """
+    from clickhouse_alembic.rebase import apply_rebase, plan_rebase
+
+    versions_dir = Path.cwd() / "migrations" / "versions"
+    if not versions_dir.exists():
+        click.echo("Error: migrations/versions/ not found", err=True)
+        sys.exit(1)
+
+    # Check for uncommitted changes to migration files
+    result = subprocess.run(
+        ["git", "diff", "--name-only", "migrations/versions/"],
+        capture_output=True,
+        text=True,
+        cwd=Path.cwd(),
+    )
+    if result.returncode == 0 and result.stdout.strip():
+        click.echo("Error: uncommitted changes in migration files. Commit or stash first.", err=True)
+        sys.exit(1)
+
+    # Determine the target revision
+    if onto is None:
+        alembic_result = _run_alembic(
+            environment, ["current"], exit_on_complete=False
+        )
+        if alembic_result is None or alembic_result.returncode != 0:
+            click.echo(
+                "Error: could not determine current revision. "
+                "Use --onto to specify the target revision explicitly.",
+                err=True,
+            )
+            sys.exit(1)
+
+        # Parse current revision from alembic output
+        # Format: "abc123 (head)" or "abc123"
+        current_match = re.search(r"(\w{4,})", alembic_result.stdout)
+        if not current_match:
+            click.echo(
+                "Error: could not parse current revision from alembic output. "
+                "Use --onto to specify the target revision explicitly.",
+                err=True,
+            )
+            sys.exit(1)
+        onto = current_match.group(1)
+
+    # Plan the rebase
+    try:
+        changes = plan_rebase(versions_dir, onto)
+    except ValueError as e:
+        click.echo(str(e))
+        sys.exit(0)
+
+    if not changes:
+        click.echo("All branches already point to the target revision.")
+        sys.exit(0)
+
+    # Show planned changes
+    click.echo(f"Rebasing onto {onto}:\n")
+    for change in changes:
+        filename = change.migration.path.name
+        click.echo(f"  {filename}")
+        click.echo(f"    down_revision: {change.old_down_revision} -> {change.new_down_revision}")
+    click.echo()
+
+    if dry_run:
+        click.echo("Dry run — no changes made.")
+        sys.exit(0)
+
+    if not click.confirm("Apply these changes?"):
+        click.echo("Aborted.")
+        sys.exit(0)
+
+    apply_rebase(changes)
+    click.echo("Rebase complete.")
+
+
+@main.command()
 @click.option(
     "--user",
     "target",
