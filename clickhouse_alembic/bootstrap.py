@@ -115,6 +115,7 @@ def build_bootstrap_sql(
         f"GRANT CREATE TABLE, DROP TABLE, UNDROP TABLE, ALTER ON {db}.* TO {project}_migration_role WITH GRANT OPTION;",
         f"GRANT CREATE VIEW, DROP VIEW ON {db}.* TO {project}_migration_role WITH GRANT OPTION;",
         f"GRANT CREATE DICTIONARY, DROP DICTIONARY ON {db}.* TO {project}_migration_role WITH GRANT OPTION;",
+        f"GRANT CREATE FUNCTION, DROP FUNCTION ON *.* TO {project}_migration_role WITH GRANT OPTION;",
         "",
         "-- User/role management (for migrations that create RLS users/roles)",
         f"GRANT CREATE USER, ALTER USER, DROP USER ON *.* TO {project}_migration_role WITH GRANT OPTION;",
