@@ -28,6 +28,7 @@ dependencies = [
     "clickhouse-sqlalchemy>=0.3.0", # Required for Alembic's SQLAlchemy dialect
     "python-dotenv>=1.0.0",
     "pyyaml>=6.0",
+    "rich>=13.0.0",
 ]
 
 [project.scripts]

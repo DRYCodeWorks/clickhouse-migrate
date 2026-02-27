@@ -62,6 +62,27 @@ class TestParseMigration:
         assert result.revision == "abc123"
         assert result.down_revision is None
 
+    def test_parses_description_from_docstring(self, tmp_path):
+        path = _write_migration(tmp_path, "abc123", "def456", "create users table")
+        result = parse_migration(path)
+        assert result is not None
+        assert result.description == "create users table"
+
+    def test_parses_create_date(self, tmp_path):
+        path = _write_migration(tmp_path, "abc123", "def456")
+        result = parse_migration(path)
+        assert result is not None
+        assert result.create_date == "2026-01-01 00:00"
+
+    def test_description_and_create_date_default_none(self, tmp_path):
+        """Files without docstring/date still parse."""
+        path = tmp_path / "bare.py"
+        path.write_text("revision = 'aaa'\ndown_revision = 'bbb'\n")
+        result = parse_migration(path)
+        assert result is not None
+        assert result.description is None
+        assert result.create_date is None
+
     def test_returns_none_for_unparseable_file(self, tmp_path):
         path = tmp_path / "bad.py"
         path.write_text("# no revision here\n")

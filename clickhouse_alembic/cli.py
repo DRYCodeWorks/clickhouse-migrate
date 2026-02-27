@@ -230,9 +230,37 @@ def down(environment: str, revision: str) -> None:
 def status(environment: str) -> None:
     """Show migration status.
 
-    Displays the current revision and any pending migrations.
+    Displays environment info, applied/pending counts, and head status.
     """
-    _run_alembic(environment, ["current", "-v"])
+    from clickhouse_alembic.connection import get_current_heads
+    from clickhouse_alembic.display import render_status
+    from clickhouse_alembic.rebase import build_revision_graph
+
+    config_path = Path.cwd() / "config.yaml"
+    try:
+        env_config = get_env_config(environment, config_path)
+    except Exception as e:
+        click.echo(f"Error loading config: {e}", err=True)
+        sys.exit(1)
+
+    versions_dir = Path.cwd() / "migrations" / "versions"
+    if not versions_dir.exists():
+        click.echo("Error: migrations/versions/ not found", err=True)
+        sys.exit(1)
+
+    graph = build_revision_graph(versions_dir)
+
+    db_error = None
+    applied: set[str] | None = None
+    try:
+        db_heads = get_current_heads(env_config)
+        applied = set()
+        for head in db_heads:
+            applied.update(graph.walk_to_root(head))
+    except Exception as e:
+        db_error = str(e)
+
+    render_status(environment, env_config, graph, applied, db_error=db_error)
 
 
 @main.command()
@@ -240,9 +268,37 @@ def status(environment: str) -> None:
 def history(environment: str) -> None:
     """Show migration history.
 
-    Lists all migrations with their revision IDs and descriptions.
+    Displays a tree of all migrations, color-coded by applied status.
     """
-    _run_alembic(environment, ["history", "-v"])
+    from clickhouse_alembic.connection import get_current_heads
+    from clickhouse_alembic.display import render_history
+    from clickhouse_alembic.rebase import build_revision_graph
+
+    config_path = Path.cwd() / "config.yaml"
+    try:
+        env_config = get_env_config(environment, config_path)
+    except Exception as e:
+        click.echo(f"Error loading config: {e}", err=True)
+        sys.exit(1)
+
+    versions_dir = Path.cwd() / "migrations" / "versions"
+    if not versions_dir.exists():
+        click.echo("Error: migrations/versions/ not found", err=True)
+        sys.exit(1)
+
+    graph = build_revision_graph(versions_dir)
+
+    db_error = None
+    applied: set[str] | None = None
+    try:
+        db_heads = get_current_heads(env_config)
+        applied = set()
+        for head in db_heads:
+            applied.update(graph.walk_to_root(head))
+    except Exception as e:
+        db_error = str(e)
+
+    render_history(graph, applied, db_error=db_error)
 
 
 @main.command()
