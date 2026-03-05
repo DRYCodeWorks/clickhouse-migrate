@@ -9,6 +9,8 @@ defaults:
   port: 8443
   secure: true
   admin_user: default
+  # Optional: cluster name for ON CLUSTER DDL (self-hosted deployments)
+  # cluster: my_cluster
   # Optional: dict_reader for dictionary sources
   # dict_reader_name: dict_reader
   # Optional: mcp_user for read-only MCP tool access
