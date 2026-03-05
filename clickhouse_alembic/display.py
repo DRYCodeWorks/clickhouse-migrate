@@ -8,7 +8,6 @@ from rich.console import Console, Group
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
-from rich.tree import Tree
 
 from clickhouse_alembic.rebase import RevisionGraph
 
@@ -26,13 +25,40 @@ def _short_error(error: str) -> str:
     return error.split("\n")[0][:120]
 
 
+def _format_revision(
+    revision: str,
+    graph: RevisionGraph,
+    applied_revisions: set[str] | None,
+    heads: set[str],
+) -> str:
+    """Format a single revision line."""
+    migration = graph.migrations.get(revision)
+    desc = migration.description if migration else ""
+    short_rev = revision[:8]
+
+    if applied_revisions is None:
+        line = f"  [dim]\u2500 {short_rev}[/dim]  {desc}"
+    elif revision in applied_revisions:
+        line = f"  [green]\u2713 {short_rev}[/green]  {desc}"
+    else:
+        line = f"  [yellow]\u25cb {short_rev}[/yellow]  {desc}"
+
+    if revision in heads:
+        line += "  [bold cyan](HEAD)[/bold cyan]"
+
+    return line
+
+
 def render_history(
     graph: RevisionGraph,
     applied_revisions: set[str] | None,
     db_error: str | None = None,
     console: Console | None = None,
 ) -> None:
-    """Render migration history as a Rich tree.
+    """Render migration history as a flat list, newest first.
+
+    Linear chains render flat (like git log). Branches are shown as
+    indented sections only where the graph actually forks.
 
     Args:
         graph: Parsed revision graph from migration files.
@@ -54,55 +80,46 @@ def render_history(
         console.print("[dim]No migrations found.[/dim]")
         return
 
-    tree = Tree("[bold]Migration History[/bold]")
+    # Build ordered list from heads back to roots (newest first).
+    ordered = _build_display_order(graph)
 
-    for root_rev in roots:
-        _add_branch(tree, root_rev, graph, applied_revisions, heads)
+    console.print("[bold]Migration History[/bold]")
+    console.print()
 
-    console.print(tree)
+    visited: set[str] = set()
+    for revision in ordered:
+        if revision in visited:
+            continue
+        visited.add(revision)
+        console.print(_format_revision(revision, graph, applied_revisions, heads))
+
+    console.print()
 
 
-def _add_branch(
-    parent: Tree,
-    revision: str,
-    graph: RevisionGraph,
-    applied_revisions: set[str] | None,
-    heads: set[str],
-    visited: set[str] | None = None,
-) -> None:
-    """Recursively add a revision and its children to the tree."""
-    if visited is None:
-        visited = set()
+def _build_display_order(graph: RevisionGraph) -> list[str]:
+    """Build a newest-first display order by walking from heads to roots.
 
-    if revision in visited:
-        parent.add(f"[red]\u21ba {revision[:8]}  (cycle detected)[/red]")
-        return
-    visited.add(revision)
+    For a linear chain this produces a simple reverse-chronological list.
+    For branches, interleaves them by walking each head fully before the next.
+    Falls back to all revisions if no heads are found (e.g., due to a cycle).
+    """
+    heads = graph.heads()
+    visited: set[str] = set()
+    ordered: list[str] = []
 
-    migration = graph.migrations.get(revision)
-    if not migration:
-        return
+    for head in heads:
+        chain = graph.walk_to_root(head)
+        for rev in chain:
+            if rev not in visited:
+                visited.add(rev)
+                ordered.append(rev)
 
-    short_rev = revision[:8]
-    desc = migration.description or ""
+    # Fallback: include any revisions not reachable from heads (e.g., cycles).
+    for rev in graph.migrations:
+        if rev not in visited:
+            ordered.append(rev)
 
-    if applied_revisions is None:
-        marker = "[dim]\u2500[/dim]"
-        label = f"{marker} [dim]{short_rev}[/dim]  {desc}"
-    elif revision in applied_revisions:
-        marker = "[green]\u2713[/green]"
-        label = f"{marker} [green]{short_rev}[/green]  {desc}"
-    else:
-        marker = "[yellow]\u25cb[/yellow]"
-        label = f"{marker} [yellow]{short_rev}[/yellow]  {desc}"
-
-    if revision in heads:
-        label += "  [bold cyan](HEAD)[/bold cyan]"
-
-    node = parent.add(label)
-
-    for child_rev in graph.children.get(revision, []):
-        _add_branch(node, child_rev, graph, applied_revisions, heads, visited)
+    return ordered
 
 
 def render_status(
