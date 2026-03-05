@@ -135,6 +135,13 @@ def build_bootstrap_sql(
         "-- Temp tables (for zero-downtime migrations with EXCHANGE TABLES)",
         "-- Note: EXCHANGE TABLES requires DROP on both tables, already granted above",
         f"GRANT CREATE TEMPORARY TABLE ON *.* TO {project}_migration_role WITH GRANT OPTION;",
+        "",
+        "-- System table introspection (for RLS migrations that inspect users/roles/policies)",
+        f"GRANT SELECT ON system.users TO {project}_migration_role;",
+        f"GRANT SELECT ON system.roles TO {project}_migration_role;",
+        f"GRANT SELECT ON system.row_policies TO {project}_migration_role;",
+        f"GRANT SELECT ON system.role_grants TO {project}_migration_role;",
+        f"GRANT SELECT ON system.settings_profile_elements TO {project}_migration_role;",
     ]
 
     # MCP readonly role (optional)
