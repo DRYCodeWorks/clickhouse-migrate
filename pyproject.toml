@@ -35,6 +35,9 @@ dependencies = [
 ch-migrate = "clickhouse_alembic.cli:main"
 
 [project.optional-dependencies]
+postgres = [
+    "psycopg2-binary>=2.9.0",
+]
 dev = [
     "pytest>=7.4.0",
     "pytest-cov>=4.1.0",
