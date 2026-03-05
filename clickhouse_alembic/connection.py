@@ -42,6 +42,8 @@ def get_client(env_config: dict[str, Any]) -> Any:
         password=env_config.get("password", ""),
         secure=secure,
         interface="https" if secure else "http",
+        connect_timeout=10,
+        send_receive_timeout=15,
     )
 
 
