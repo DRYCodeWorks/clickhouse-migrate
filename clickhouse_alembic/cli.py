@@ -568,5 +568,67 @@ def skill(target: str) -> None:
     click.echo(f"Installed skill to {skill_dst}")
 
 
+@main.command()
+@click.argument("environment", required=False, default=None)
+def lint(environment: str | None) -> None:
+    """Lint pending migration files.
+
+    Without an environment argument, runs static analysis only (no DB connection,
+    no credentials needed, CI-friendly).
+
+    With an environment argument, runs static + runtime analysis (connects to the
+    live database for row counts and dependency checks).
+
+    \b
+    Examples:
+      ch-migrate lint              # Static only (CI-friendly)
+      ch-migrate lint dev          # Static + runtime (needs DB)
+    """
+    from clickhouse_alembic.config import load_config
+    from clickhouse_alembic.display import render_lint_report
+    from clickhouse_alembic.lint import LintConfig, lint_migrations
+
+    versions_dir = Path.cwd() / "migrations" / "versions"
+    if not versions_dir.exists():
+        click.echo("Error: migrations/versions/ not found", err=True)
+        sys.exit(1)
+
+    config_path = Path.cwd() / "config.yaml"
+    lint_config = LintConfig()
+    if config_path.exists():
+        try:
+            raw_config = load_config(config_path)
+            lint_config = LintConfig.from_config(raw_config)
+        except Exception:
+            pass
+
+    client = None
+    database = None
+
+    if environment:
+        try:
+            env_config = get_env_config(environment, config_path)
+            database = env_config["database"]
+
+            from clickhouse_alembic.connection import get_client
+
+            client = get_client(env_config)
+        except Exception as e:
+            click.echo(f"Warning: Could not connect to {environment}: {e}", err=True)
+            click.echo("Falling back to static-only analysis.", err=True)
+            click.echo()
+
+    report = lint_migrations(
+        versions_dir,
+        config=lint_config,
+        client=client,
+        database=database,
+    )
+
+    render_lint_report(report, runtime=environment is not None)
+
+    sys.exit(1 if report.has_errors else 0)
+
+
 if __name__ == "__main__":
     main()
