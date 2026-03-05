@@ -333,12 +333,16 @@ def history(environment: str) -> None:
 @click.option(
     "--dict", "-d", "dict_name", help="Create SQL file for dictionary (e.g., --dict regions)"
 )
+@click.option(
+    "--exchange", is_flag=True, help="Generate EXCHANGE TABLES scaffold (requires --table)"
+)
 def new(
     environment: str,
     name: str,
     table_name: str | None,
     view_name: str | None,
     dict_name: str | None,
+    exchange: bool,
 ) -> None:
     """Create a new migration.
 
@@ -347,12 +351,31 @@ def new(
 
     Use --table, --view, or --dict with the object name to create a SQL history file:
 
+    \b
         ch-migrate new dev add_status_column --table logs
+
+    Use --exchange with --table to generate a zero-downtime EXCHANGE TABLES scaffold:
+
+    \b
+        ch-migrate new dev alter_users --table users --exchange
     """
+    if exchange and not table_name:
+        click.echo("Error: --exchange requires --table", err=True)
+        sys.exit(1)
+
     result = _run_alembic(environment, ["revision", "-m", name], exit_on_complete=False)
 
     if result is None or result.returncode != 0:
         sys.exit(1 if result is None else result.returncode)
+
+    revision = _extract_revision_from_output(result.stdout)
+    if not revision:
+        click.echo("Warning: Could not extract revision ID, SQL file not created", err=True)
+        sys.exit(0)
+
+    if exchange:
+        _create_exchange_scaffold(environment, table_name, revision, result.stdout)
+        sys.exit(0)
 
     # Determine object type and name from options
     object_name: str | None = None
@@ -366,13 +389,9 @@ def new(
 
     # If object specified, create SQL file
     if object_name and object_type:
-        revision = _extract_revision_from_output(result.stdout)
-        if revision:
-            sql_path = _create_sql_file(object_name, object_type, revision)
-            if sql_path:
-                click.echo(f"  Created {sql_path.relative_to(Path.cwd())}")
-        else:
-            click.echo("Warning: Could not extract revision ID, SQL file not created", err=True)
+        sql_path = _create_sql_file(object_name, object_type, revision)
+        if sql_path:
+            click.echo(f"  Created {sql_path.relative_to(Path.cwd())}")
 
     sys.exit(0)
 
@@ -427,6 +446,64 @@ def _create_sql_file(name: str, object_type: str, revision: str) -> Path | None:
 """
     sql_file.write_text(template)
     return sql_file
+
+
+def _create_exchange_scaffold(
+    environment: str, table_name: str, revision: str, alembic_stdout: str
+) -> None:
+    """Create EXCHANGE TABLES migration scaffold.
+
+    Rewrites the alembic-generated migration with the EXCHANGE pattern
+    and creates a SQL history file for the shadow table.
+    """
+    from clickhouse_alembic.scaffold import (
+        fetch_current_ddl,
+        find_dependent_dictionaries,
+        generate_exchange_sql,
+        rewrite_migration_file,
+    )
+
+    config_path = Path.cwd() / "config.yaml"
+
+    # Try to connect to live DB for current DDL and dict detection
+    current_ddl: str | None = None
+    dict_names: list[str] = []
+    try:
+        env_config = get_env_config(environment, config_path)
+        current_ddl = fetch_current_ddl(env_config, table_name)
+        if current_ddl:
+            click.echo(f"  Fetched current DDL for {table_name}")
+        dict_names = find_dependent_dictionaries(env_config, table_name)
+        if dict_names:
+            click.echo(f"  Detected dependent dictionaries: {', '.join(dict_names)}")
+    except Exception:
+        click.echo("  Note: Could not connect to DB; using placeholder DDL", err=True)
+
+    # Create SQL history file with shadow table DDL
+    sql_content = generate_exchange_sql(table_name, current_ddl)
+    sql_path = _create_sql_file(table_name, "table", revision)
+    if sql_path:
+        sql_path.write_text(sql_content)
+        click.echo(f"  Created {sql_path.relative_to(Path.cwd())}")
+
+        # Rewrite the migration .py with EXCHANGE pattern
+        migration_path = _find_migration_file(alembic_stdout)
+        if migration_path:
+            rel_sql = str(sql_path.relative_to(Path.cwd() / "migrations" / "sql"))
+            rewrite_migration_file(migration_path, table_name, rel_sql, dict_names or None)
+            click.echo(f"  Rewrote {migration_path.name} with EXCHANGE TABLES pattern")
+        else:
+            click.echo("Warning: Could not locate migration file to rewrite", err=True)
+
+
+def _find_migration_file(alembic_stdout: str) -> Path | None:
+    """Find the migration .py file path from alembic output."""
+    match = re.search(r"Generating (.+?\.py)", alembic_stdout, re.DOTALL)
+    if not match:
+        return None
+    file_path = re.sub(r"\n\s*", "", match.group(1))
+    path = Path(file_path)
+    return path if path.exists() else None
 
 
 @main.command()

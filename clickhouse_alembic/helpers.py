@@ -49,6 +49,38 @@ def get_db() -> str:
     return os.environ.get("CH_DATABASE", "default")
 
 
+def get_cluster() -> str | None:
+    """
+    Get the cluster name from environment.
+
+    Returns:
+        Cluster name from CH_CLUSTER env var, or None if not set
+    """
+    return os.environ.get("CH_CLUSTER") or None
+
+
+def on_cluster() -> str:
+    """
+    Get the ON CLUSTER clause for use in DDL statements.
+
+    This is an opt-in template variable. Not all DDL supports ON CLUSTER
+    equally — dictionary creation, some ALTER operations, and system queries
+    have version-dependent ON CLUSTER support. Use this explicitly in
+    statements where ON CLUSTER is appropriate.
+
+    Returns:
+        "ON CLUSTER cluster_name" if cluster is configured, empty string otherwise
+
+    Example:
+        >>> read_sql("tables/users.sql", db=get_db(), on_cluster=on_cluster())
+        # In SQL: CREATE TABLE {db}.users {on_cluster} (...)
+    """
+    cluster = get_cluster()
+    if cluster:
+        return f"ON CLUSTER {cluster}"
+    return ""
+
+
 def get_config_value(key: str) -> str | None:
     """
     Get a configuration value from environment.

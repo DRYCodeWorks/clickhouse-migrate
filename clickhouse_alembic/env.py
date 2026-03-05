@@ -92,6 +92,10 @@ def get_sqlalchemy_url() -> str:
 DATABASE_NAME = env_config["database"]
 os.environ["CH_DATABASE"] = DATABASE_NAME
 
+# Export cluster name if configured (for ON CLUSTER support)
+if env_config.get("cluster"):
+    os.environ["CH_CLUSTER"] = env_config["cluster"]
+
 
 def bootstrap_version_table(connection: Connection) -> None:
     """
