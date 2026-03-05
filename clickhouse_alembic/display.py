@@ -68,8 +68,17 @@ def _add_branch(
     graph: RevisionGraph,
     applied_revisions: set[str] | None,
     heads: set[str],
+    visited: set[str] | None = None,
 ) -> None:
     """Recursively add a revision and its children to the tree."""
+    if visited is None:
+        visited = set()
+
+    if revision in visited:
+        parent.add(f"[red]\u21ba {revision[:8]}  (cycle detected)[/red]")
+        return
+    visited.add(revision)
+
     migration = graph.migrations.get(revision)
     if not migration:
         return
@@ -93,7 +102,7 @@ def _add_branch(
     node = parent.add(label)
 
     for child_rev in graph.children.get(revision, []):
-        _add_branch(node, child_rev, graph, applied_revisions, heads)
+        _add_branch(node, child_rev, graph, applied_revisions, heads, visited)
 
 
 def render_status(

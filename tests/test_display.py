@@ -128,6 +128,21 @@ class TestRenderHistory:
         # Dim dash markers when DB unreachable
         assert "\u2500" in output
 
+    def test_cycle_does_not_cause_recursion(self, tmp_path):
+        """A cycle in the revision graph should be detected, not infinite-recurse."""
+        _write_migration(tmp_path, "aaa111", None, "create_tables")
+        _write_migration(tmp_path, "bbb222", "aaa111", "add_indexes")
+
+        graph = build_revision_graph(tmp_path)
+        # Inject a cycle: bbb222 -> aaa111 (aaa111 is already parent of bbb222)
+        graph.children.setdefault("bbb222", []).append("aaa111")
+
+        console = _capture_console()
+        render_history(graph, {"aaa111", "bbb222"}, console=console)
+        output = _get_output(console)
+
+        assert "cycle detected" in output
+
     def test_empty_graph(self, tmp_path):
         graph = build_revision_graph(tmp_path)
         console = _capture_console()
