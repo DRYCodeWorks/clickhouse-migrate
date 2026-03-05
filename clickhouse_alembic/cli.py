@@ -256,7 +256,13 @@ def status(environment: str) -> None:
         db_heads = get_current_heads(env_config)
         applied = set()
         for head in db_heads:
-            applied.update(graph.walk_to_root(head))
+            if head in graph.migrations:
+                applied.update(graph.walk_to_root(head))
+            else:
+                click.echo(
+                    f"Warning: DB head {head[:12]} not found in local migration files",
+                    err=True,
+                )
     except Exception as e:
         db_error = str(e)
 
@@ -293,8 +299,24 @@ def history(environment: str) -> None:
     try:
         db_heads = get_current_heads(env_config)
         applied = set()
+        unresolved_heads: list[str] = []
         for head in db_heads:
-            applied.update(graph.walk_to_root(head))
+            if head in graph.migrations:
+                applied.update(graph.walk_to_root(head))
+            else:
+                unresolved_heads.append(head)
+
+        if unresolved_heads:
+            for head in unresolved_heads:
+                click.echo(
+                    f"Warning: DB head {head[:12]} not found in local migration files",
+                    err=True,
+                )
+            click.echo(
+                "Applied status may be incomplete — local files may be out of sync with the database.",
+                err=True,
+            )
+            click.echo()
     except Exception as e:
         db_error = str(e)
 
