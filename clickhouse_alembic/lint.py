@@ -1,0 +1,548 @@
+"""Migration linting: static and runtime analysis rules for ch-migrate."""
+
+from __future__ import annotations
+
+import re
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from enum import Enum
+from pathlib import Path
+from typing import Any
+
+from clickhouse_alembic.rebase import RevisionGraph, build_revision_graph, parse_migration
+
+
+# ---------------------------------------------------------------------------
+# Data models
+# ---------------------------------------------------------------------------
+
+
+class Severity(str, Enum):
+    ERROR = "error"
+    WARN = "warn"
+    OFF = "off"
+
+
+@dataclass
+class LintResult:
+    rule: str
+    message: str
+    severity: Severity
+    file: str | None = None
+    line: int | None = None
+
+
+@dataclass
+class LintReport:
+    results: list[LintResult] = field(default_factory=list)
+
+    @property
+    def has_errors(self) -> bool:
+        return any(r.severity == Severity.ERROR for r in self.results)
+
+    @property
+    def error_count(self) -> int:
+        return sum(1 for r in self.results if r.severity == Severity.ERROR)
+
+    @property
+    def warning_count(self) -> int:
+        return sum(1 for r in self.results if r.severity == Severity.WARN)
+
+
+@dataclass
+class LintConfig:
+    """Lint configuration loaded from config.yaml."""
+
+    large_table_threshold: int = 100_000_000
+    rules: dict[str, Severity] = field(default_factory=dict)
+
+    @classmethod
+    def from_config(cls, config: dict[str, Any]) -> LintConfig:
+        lint_section = config.get("lint", {})
+        if not lint_section:
+            return cls()
+
+        threshold = lint_section.get("large_table_threshold", 100_000_000)
+        rules_raw = lint_section.get("rules", {})
+        rules = {}
+        for name, level in rules_raw.items():
+            try:
+                rules[name] = Severity(level)
+            except ValueError:
+                pass
+
+        return cls(large_table_threshold=threshold, rules=rules)
+
+
+# ---------------------------------------------------------------------------
+# Base class
+# ---------------------------------------------------------------------------
+
+
+class LintRule(ABC):
+    """Base class for lint rules.
+
+    Subclasses implement `check()` which receives migration SQL and context,
+    returning a list of LintResult. Each rule has a `name` used for config lookup.
+    """
+
+    name: str = ""
+    default_severity: Severity = Severity.WARN
+    requires_db: bool = False
+
+    def get_severity(self, config: LintConfig) -> Severity:
+        return config.rules.get(self.name, self.default_severity)
+
+    @abstractmethod
+    def check(
+        self,
+        sql: str,
+        *,
+        file_path: str | None = None,
+        config: LintConfig | None = None,
+        client: Any | None = None,
+        database: str | None = None,
+        graph: RevisionGraph | None = None,
+    ) -> list[LintResult]:
+        ...
+
+
+# ---------------------------------------------------------------------------
+# ClickHouse reserved words
+# ---------------------------------------------------------------------------
+
+# Subset of CH reserved words that commonly collide with column names.
+# Full list is version-dependent; these are the most common traps.
+_CH_RESERVED_WORDS = frozenset({
+    "add", "after", "alias", "all", "alter", "and", "anti", "any", "array",
+    "as", "asc", "attach", "between", "both", "by", "case", "cast", "check",
+    "cluster", "collate", "column", "comment", "constraint", "create",
+    "cross", "cube", "current", "database", "databases", "date", "day",
+    "default", "delete", "desc", "describe", "detach", "dictionaries",
+    "dictionary", "distinct", "distributed", "drop", "else", "end", "engine",
+    "events", "except", "exists", "explain", "expression", "extract", "fetch",
+    "final", "first", "flush", "following", "for", "format", "from", "full",
+    "function", "global", "granularity", "group", "having", "hour", "if",
+    "ilike", "in", "index", "inject", "inner", "insert", "interval", "into",
+    "is", "join", "key", "kill", "last", "layout", "leading", "left", "like",
+    "limit", "live", "local", "logs", "materialize", "materialized", "max",
+    "merges", "min", "minute", "modify", "month", "move", "mutation", "no",
+    "not", "null", "nulls", "offset", "on", "optimize", "or", "order",
+    "outer", "outfile", "over", "partition", "populate", "preceding",
+    "primary", "prewhere", "projection", "quarter", "range", "reload",
+    "remove", "rename", "replace", "right", "rollup", "row", "rows",
+    "sample", "second", "select", "semi", "set", "settings", "show",
+    "source", "start", "stop", "system", "table", "tables", "temporary",
+    "test", "then", "ties", "timestamp", "to", "top", "totals", "trailing",
+    "trim", "truncate", "type", "unbounded", "union", "update", "use",
+    "using", "uuid", "values", "view", "volume", "watch", "week", "when",
+    "where", "window", "with", "year",
+})
+
+
+# ---------------------------------------------------------------------------
+# Static rules (no DB connection needed)
+# ---------------------------------------------------------------------------
+
+
+class DestructiveChangeRule(LintRule):
+    """Flags DROP TABLE and DROP COLUMN statements."""
+
+    name = "destructive_changes"
+    default_severity = Severity.WARN
+
+    _RE_DROP_TABLE = re.compile(
+        r"\bDROP\s+TABLE\b", re.IGNORECASE
+    )
+    _RE_DROP_COLUMN = re.compile(
+        r"\bDROP\s+COLUMN\b", re.IGNORECASE
+    )
+
+    def check(self, sql: str, **kwargs: Any) -> list[LintResult]:
+        config = kwargs.get("config") or LintConfig()
+        severity = self.get_severity(config)
+        if severity == Severity.OFF:
+            return []
+
+        results: list[LintResult] = []
+        file_path = kwargs.get("file_path")
+
+        for match in self._RE_DROP_TABLE.finditer(sql):
+            line = sql[:match.start()].count("\n") + 1
+            results.append(LintResult(
+                rule=self.name,
+                message="DROP TABLE is destructive and irreversible",
+                severity=severity,
+                file=file_path,
+                line=line,
+            ))
+
+        for match in self._RE_DROP_COLUMN.finditer(sql):
+            line = sql[:match.start()].count("\n") + 1
+            results.append(LintResult(
+                rule=self.name,
+                message="DROP COLUMN is destructive and irreversible",
+                severity=severity,
+                file=file_path,
+                line=line,
+            ))
+
+        return results
+
+
+class IdempotencyRule(LintRule):
+    """Flags CREATE/DROP without IF EXISTS / IF NOT EXISTS."""
+
+    name = "idempotency"
+    default_severity = Severity.WARN
+
+    _RE_CREATE_NO_IF = re.compile(
+        r"\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:TABLE|VIEW|MATERIALIZED\s+VIEW|DICTIONARY)\s+"
+        r"(?!IF\s+NOT\s+EXISTS\b)",
+        re.IGNORECASE,
+    )
+    _RE_DROP_NO_IF = re.compile(
+        r"\bDROP\s+(?:TABLE|VIEW|DICTIONARY)\s+(?!IF\s+EXISTS\b)",
+        re.IGNORECASE,
+    )
+
+    def check(self, sql: str, **kwargs: Any) -> list[LintResult]:
+        config = kwargs.get("config") or LintConfig()
+        severity = self.get_severity(config)
+        if severity == Severity.OFF:
+            return []
+
+        results: list[LintResult] = []
+        file_path = kwargs.get("file_path")
+
+        for match in self._RE_CREATE_NO_IF.finditer(sql):
+            # Skip CREATE OR REPLACE (already idempotent)
+            matched_text = match.group(0)
+            if re.search(r"OR\s+REPLACE", matched_text, re.IGNORECASE):
+                continue
+            line = sql[:match.start()].count("\n") + 1
+            results.append(LintResult(
+                rule=self.name,
+                message="CREATE without IF NOT EXISTS is not idempotent",
+                severity=severity,
+                file=file_path,
+                line=line,
+            ))
+
+        for match in self._RE_DROP_NO_IF.finditer(sql):
+            line = sql[:match.start()].count("\n") + 1
+            results.append(LintResult(
+                rule=self.name,
+                message="DROP without IF EXISTS is not idempotent",
+                severity=severity,
+                file=file_path,
+                line=line,
+            ))
+
+        return results
+
+
+class ReservedWordRule(LintRule):
+    """Flags column names that are ClickHouse reserved words."""
+
+    name = "reserved_words"
+    default_severity = Severity.WARN
+
+    _RE_COLUMN_DEF = re.compile(
+        r"^\s+`?(\w+)`?\s+(?:Nullable|UInt|Int|Float|String|Date|Array|Tuple|Map|Bool|Enum)",
+        re.IGNORECASE | re.MULTILINE,
+    )
+
+    def check(self, sql: str, **kwargs: Any) -> list[LintResult]:
+        config = kwargs.get("config") or LintConfig()
+        severity = self.get_severity(config)
+        if severity == Severity.OFF:
+            return []
+
+        results: list[LintResult] = []
+        file_path = kwargs.get("file_path")
+
+        for match in self._RE_COLUMN_DEF.finditer(sql):
+            col_name = match.group(1)
+            if col_name.lower() in _CH_RESERVED_WORDS:
+                line = sql[:match.start()].count("\n") + 1
+                results.append(LintResult(
+                    rule=self.name,
+                    message=f"Column '{col_name}' is a ClickHouse reserved word",
+                    severity=severity,
+                    file=file_path,
+                    line=line,
+                ))
+
+        return results
+
+
+class MissingOnClusterRule(LintRule):
+    """Flags DDL without {on_cluster} when cluster is configured."""
+
+    name = "missing_on_cluster"
+    default_severity = Severity.OFF  # Off by default — only relevant for clustered setups
+
+    _RE_DDL = re.compile(
+        r"\b(CREATE|ALTER|DROP)\s+(?:OR\s+REPLACE\s+)?"
+        r"(?:TABLE|VIEW|MATERIALIZED\s+VIEW|DICTIONARY)\b",
+        re.IGNORECASE,
+    )
+
+    def check(self, sql: str, **kwargs: Any) -> list[LintResult]:
+        config = kwargs.get("config") or LintConfig()
+        severity = self.get_severity(config)
+        if severity == Severity.OFF:
+            return []
+
+        results: list[LintResult] = []
+        file_path = kwargs.get("file_path")
+
+        for match in self._RE_DDL.finditer(sql):
+            # Check if ON CLUSTER or {on_cluster} appears nearby
+            rest = sql[match.end():match.end() + 200]
+            if not re.search(r"(?:ON\s+CLUSTER|{on_cluster})", rest, re.IGNORECASE):
+                line = sql[:match.start()].count("\n") + 1
+                stmt_type = match.group(0).strip()
+                results.append(LintResult(
+                    rule=self.name,
+                    message=f"{stmt_type} without ON CLUSTER or {{on_cluster}} placeholder",
+                    severity=severity,
+                    file=file_path,
+                    line=line,
+                ))
+
+        return results
+
+
+# ---------------------------------------------------------------------------
+# Runtime rules (require DB connection)
+# ---------------------------------------------------------------------------
+
+
+class LargeTableMutationRule(LintRule):
+    """Flags ALTER on tables above a configurable row threshold."""
+
+    name = "large_table_mutation"
+    default_severity = Severity.WARN
+    requires_db = True
+
+    _RE_ALTER_TABLE = re.compile(
+        r"\bALTER\s+TABLE\s+(?:`?(\w+)`?\.)?`?(\w+)`?",
+        re.IGNORECASE,
+    )
+
+    def check(self, sql: str, **kwargs: Any) -> list[LintResult]:
+        config = kwargs.get("config") or LintConfig()
+        severity = self.get_severity(config)
+        if severity == Severity.OFF:
+            return []
+
+        client = kwargs.get("client")
+        database = kwargs.get("database")
+        if not client or not database:
+            return []
+
+        results: list[LintResult] = []
+        file_path = kwargs.get("file_path")
+        threshold = config.large_table_threshold
+
+        for match in self._RE_ALTER_TABLE.finditer(sql):
+            db = match.group(1) or database
+            table_name = match.group(2)
+            try:
+                result = client.query(
+                    "SELECT count() FROM system.parts "
+                    "WHERE database = {db:String} AND table = {tbl:String} AND active",
+                    parameters={"db": db, "tbl": table_name},
+                )
+                if result.result_rows:
+                    row_count = result.result_rows[0][0]
+                    if row_count > threshold:
+                        line = sql[:match.start()].count("\n") + 1
+                        results.append(LintResult(
+                            rule=self.name,
+                            message=(
+                                f"ALTER on '{table_name}' which has {row_count:,} parts "
+                                f"(threshold: {threshold:,})"
+                            ),
+                            severity=severity,
+                            file=file_path,
+                            line=line,
+                        ))
+            except Exception:
+                pass
+
+        return results
+
+
+class MVDependencyRule(LintRule):
+    """Flags operations on tables that have materialized view dependencies."""
+
+    name = "mv_dependency"
+    default_severity = Severity.WARN
+    requires_db = True
+
+    _RE_DROP_TABLE = re.compile(
+        r"\bDROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:`?(\w+)`?\.)?`?(\w+)`?",
+        re.IGNORECASE,
+    )
+    _RE_ALTER_TABLE = re.compile(
+        r"\bALTER\s+TABLE\s+(?:`?(\w+)`?\.)?`?(\w+)`?",
+        re.IGNORECASE,
+    )
+
+    def check(self, sql: str, **kwargs: Any) -> list[LintResult]:
+        config = kwargs.get("config") or LintConfig()
+        severity = self.get_severity(config)
+        if severity == Severity.OFF:
+            return []
+
+        client = kwargs.get("client")
+        database = kwargs.get("database")
+        if not client or not database:
+            return []
+
+        results: list[LintResult] = []
+        file_path = kwargs.get("file_path")
+
+        from clickhouse_alembic.introspect import get_dependencies
+
+        try:
+            dep_graph = get_dependencies(client, database)
+        except Exception:
+            return []
+
+        tables_to_check: list[tuple[str, re.Match[str]]] = []
+        for match in self._RE_DROP_TABLE.finditer(sql):
+            tables_to_check.append((match.group(2), match))
+        for match in self._RE_ALTER_TABLE.finditer(sql):
+            tables_to_check.append((match.group(2), match))
+
+        for table_name, match in tables_to_check:
+            affected = dep_graph.affected_by_drop(table_name)
+            if affected:
+                mv_names = [
+                    n.name for n in affected if n.obj_type == "materialized_view"
+                ]
+                dict_names = [
+                    n.name for n in affected if n.obj_type == "dictionary"
+                ]
+                if mv_names or dict_names:
+                    line = sql[:match.start()].count("\n") + 1
+                    deps = []
+                    if mv_names:
+                        deps.append(f"MVs: {', '.join(mv_names)}")
+                    if dict_names:
+                        deps.append(f"Dicts: {', '.join(dict_names)}")
+                    results.append(LintResult(
+                        rule=self.name,
+                        message=(
+                            f"'{table_name}' has dependent objects: {'; '.join(deps)}"
+                        ),
+                        severity=severity,
+                        file=file_path,
+                        line=line,
+                    ))
+
+        return results
+
+
+# ---------------------------------------------------------------------------
+# Rule registry
+# ---------------------------------------------------------------------------
+
+STATIC_RULES: list[LintRule] = [
+    DestructiveChangeRule(),
+    IdempotencyRule(),
+    ReservedWordRule(),
+    MissingOnClusterRule(),
+]
+
+RUNTIME_RULES: list[LintRule] = [
+    LargeTableMutationRule(),
+    MVDependencyRule(),
+]
+
+ALL_RULES: list[LintRule] = STATIC_RULES + RUNTIME_RULES
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+
+def _read_migration_sql(migration_path: Path) -> str:
+    """Read SQL from a migration file's upgrade function.
+
+    Extracts SQL string literals from read_sql() calls and op.execute() calls.
+    Falls back to reading any associated .sql files.
+    """
+    content = migration_path.read_text()
+    sql_parts: list[str] = []
+
+    # Extract string literals from op.execute(...) calls
+    for match in re.finditer(r'op\.execute\(\s*(?:f?"""(.*?)"""|f?"([^"]*)")', content, re.DOTALL):
+        sql_parts.append(match.group(1) or match.group(2) or "")
+
+    # Extract paths from read_sql(...) calls and try to read them
+    for match in re.finditer(r'read_sql\(\s*["\']([^"\']+)["\']', content):
+        sql_path = migration_path.parent.parent / "sql" / match.group(1)
+        if sql_path.exists():
+            sql_parts.append(sql_path.read_text())
+
+    return "\n".join(sql_parts) if sql_parts else content
+
+
+def lint_migrations(
+    versions_dir: Path,
+    *,
+    config: LintConfig | None = None,
+    client: Any | None = None,
+    database: str | None = None,
+) -> LintReport:
+    """Run lint rules against pending migration files.
+
+    Args:
+        versions_dir: Path to migrations/versions/ directory.
+        config: Lint configuration. Defaults to LintConfig().
+        client: Optional clickhouse-connect client for runtime rules.
+        database: Database name for runtime rules.
+
+    Returns:
+        LintReport with all findings.
+    """
+    if config is None:
+        config = LintConfig()
+
+    graph = build_revision_graph(versions_dir)
+    report = LintReport()
+
+    rules = list(STATIC_RULES)
+    if client is not None:
+        rules.extend(RUNTIME_RULES)
+
+    for migration in graph.migrations.values():
+        sql = _read_migration_sql(migration.path)
+        if not sql.strip():
+            continue
+
+        file_path = str(migration.path.name)
+        for rule in rules:
+            severity = rule.get_severity(config)
+            if severity == Severity.OFF:
+                continue
+            if rule.requires_db and client is None:
+                continue
+
+            findings = rule.check(
+                sql,
+                file_path=file_path,
+                config=config,
+                client=client,
+                database=database,
+                graph=graph,
+            )
+            report.results.extend(findings)
+
+    return report

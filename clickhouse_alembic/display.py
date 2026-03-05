@@ -201,3 +201,58 @@ def render_status(
         border_style="blue",
     )
     console.print(panel)
+
+
+def render_lint_report(
+    report: Any,
+    *,
+    runtime: bool = False,
+    console: Console | None = None,
+) -> None:
+    """Render lint results as a Rich table.
+
+    Args:
+        report: LintReport with results.
+        runtime: Whether runtime rules were included.
+        console: Optional Console for testability.
+    """
+    console = console or Console()
+
+    if not report.results:
+        mode = "static + runtime" if runtime else "static"
+        console.print(f"[green]No lint issues found ({mode} analysis).[/green]")
+        return
+
+    table = Table(title="Lint Results", show_lines=False)
+    table.add_column("Severity", width=8)
+    table.add_column("Rule", width=22)
+    table.add_column("File", width=30)
+    table.add_column("Line", width=5, justify="right")
+    table.add_column("Message")
+
+    for r in report.results:
+        if r.severity.value == "error":
+            sev_style = "bold red"
+            sev_text = "ERROR"
+        else:
+            sev_style = "yellow"
+            sev_text = "WARN"
+
+        table.add_row(
+            Text(sev_text, style=sev_style),
+            r.rule,
+            r.file or "",
+            str(r.line) if r.line else "",
+            r.message,
+        )
+
+    console.print(table)
+    console.print()
+
+    summary_parts = []
+    if report.error_count:
+        summary_parts.append(f"[bold red]{report.error_count} error(s)[/bold red]")
+    if report.warning_count:
+        summary_parts.append(f"[yellow]{report.warning_count} warning(s)[/yellow]")
+
+    console.print(f"  {', '.join(summary_parts)}")
