@@ -31,19 +31,31 @@ class RevisionGraph:
         return [rev for rev in self.migrations if rev not in has_children]
 
     def ancestors(self, revision: str) -> set[str]:
-        """Return all ancestors of a revision (not including itself)."""
+        """Return all ancestors of a revision (not including itself).
+
+        Stops if a cycle is detected to prevent infinite loops.
+        """
         result: set[str] = set()
         current = self.migrations.get(revision)
         while current and current.down_revision:
+            if current.down_revision in result:
+                break
             result.add(current.down_revision)
             current = self.migrations.get(current.down_revision)
         return result
 
     def walk_to_root(self, revision: str) -> list[str]:
-        """Walk from revision back to root, returning the chain."""
+        """Walk from revision back to root, returning the chain.
+
+        Stops if a cycle is detected to prevent infinite loops.
+        """
         chain = [revision]
+        visited = {revision}
         current = self.migrations.get(revision)
         while current and current.down_revision:
+            if current.down_revision in visited:
+                break
+            visited.add(current.down_revision)
             chain.append(current.down_revision)
             current = self.migrations.get(current.down_revision)
         return chain
