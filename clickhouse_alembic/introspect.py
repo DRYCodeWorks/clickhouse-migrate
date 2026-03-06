@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Literal
@@ -114,10 +115,10 @@ class DependencyGraph:
                 adj[edge.source].append(edge.target)
                 in_degree[edge.target] += 1
 
-        queue = [n for n, d in in_degree.items() if d == 0]
+        queue = deque(n for n, d in in_degree.items() if d == 0)
         result: list[str] = []
         while queue:
-            node = queue.pop(0)
+            node = queue.popleft()
             result.append(node)
             for neighbor in adj.get(node, []):
                 in_degree[neighbor] -= 1
