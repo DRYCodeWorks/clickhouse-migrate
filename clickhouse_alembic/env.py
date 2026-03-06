@@ -18,6 +18,7 @@ The clickhouse-sqlalchemy package provides the `clickhouse+http://` URL dialect 
 Alembic uses to connect to ClickHouse.
 """
 
+import logging
 import os
 from logging.config import fileConfig
 from pathlib import Path
@@ -29,6 +30,9 @@ from dotenv import load_dotenv
 from sqlalchemy import Connection, create_engine, pool, text
 
 from clickhouse_alembic.config import get_env_config
+from clickhouse_alembic.hooks import HookRegistry, run_hooks
+
+logger = logging.getLogger(__name__)
 
 # Alembic Config object
 config = context.config
@@ -54,6 +58,9 @@ except FileNotFoundError:
 # Setup logging
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
+
+# Load hook registry from config
+hook_registry = HookRegistry.from_config(env_config.get("hooks"))
 
 
 class ClickhouseImpl(impl.DefaultImpl):
@@ -145,18 +152,46 @@ def run_migrations_offline() -> None:
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode - executes against the database."""
     connectable = create_engine(get_sqlalchemy_url(), poolclass=pool.NullPool)
+    db = DATABASE_NAME
+
+    def _on_version_apply(ctx, step, heads, run_args):
+        """Fire post-migrate hooks after each migration step.
+
+        on_version_apply fires AFTER each migration step completes,
+        so we use it for post-migrate hooks only.
+        """
+        revision = step.up_revision if step.is_upgrade else (
+            step.down_revisions[0] if step.down_revisions else "unknown"
+        )
+        if hook_registry.post_migrate:
+            run_hooks(
+                ctx.connection, hook_registry.post_migrate,
+                db=db, phase="post_migrate", revision=revision,
+            )
 
     with connectable.connect() as connection:
         bootstrap_version_table(connection)
 
-        context.configure(
+        configure_kwargs = dict(
             connection=connection,
             target_metadata=None,
             version_table="alembic_version",
             version_table_schema=DATABASE_NAME,
         )
 
+        if hook_registry.has_hooks:
+            configure_kwargs["on_version_apply"] = _on_version_apply
+
+        context.configure(**configure_kwargs)
+
         with context.begin_transaction():
+            # Fire pre-migrate hooks before the migration run
+            if hook_registry.pre_migrate:
+                run_hooks(
+                    connection, hook_registry.pre_migrate,
+                    db=db, phase="pre_migrate", revision="all",
+                )
+
             context.run_migrations()
 
 

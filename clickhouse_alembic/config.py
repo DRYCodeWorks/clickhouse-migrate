@@ -108,4 +108,9 @@ def get_env_config(env_name: str, config_path: Path) -> dict[str, Any]:
         required=False,
     )
 
+    # Pass through top-level hooks section (used by env.py for pre/post migrate)
+    hooks_config = config.get("hooks")
+    if hooks_config:
+        env_config["hooks"] = hooks_config
+
     return env_config
