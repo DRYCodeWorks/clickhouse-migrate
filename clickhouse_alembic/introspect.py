@@ -132,10 +132,12 @@ class DependencyGraph:
         return result
 
     def affected_by_drop(self, name: str) -> list[ObjectNode]:
-        """Return all objects affected by dropping the given object."""
+        """Return direct dependents that would be affected by dropping the given object."""
+        seen: set[str] = set()
         affected: list[ObjectNode] = []
         for edge in self.edges:
-            if edge.source == name and edge.target in self.nodes:
+            if edge.source == name and edge.target in self.nodes and edge.target not in seen:
+                seen.add(edge.target)
                 affected.append(self.nodes[edge.target])
         return affected
 

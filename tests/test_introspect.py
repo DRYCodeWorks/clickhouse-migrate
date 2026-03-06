@@ -409,6 +409,14 @@ class TestDependencyGraph:
         affected_names = [n.name for n in affected]
         assert "hourly_events" in affected_names
 
+    def test_affected_by_drop_deduplicates(self):
+        """Multi-edge pairs (data_flow + schema) should not produce duplicates."""
+        graph = self._make_graph()
+        # events -> hourly_events has both data_flow and schema edges
+        affected = graph.affected_by_drop("events")
+        affected_names = [n.name for n in affected]
+        assert affected_names == ["hourly_events"]  # no duplicate
+
     def test_affected_by_drop_no_deps(self):
         graph = self._make_graph()
         affected = graph.affected_by_drop("hourly_events")
