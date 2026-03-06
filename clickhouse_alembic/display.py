@@ -8,6 +8,7 @@ from rich.console import Console, Group
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
+from rich.tree import Tree
 
 from clickhouse_alembic.rebase import RevisionGraph
 
@@ -256,3 +257,203 @@ def render_lint_report(
         summary_parts.append(f"[yellow]{report.warning_count} warning(s)[/yellow]")
 
     console.print(f"  {', '.join(summary_parts)}")
+
+
+def render_snapshot_progress(
+    output_dir: str,
+    counts: dict[str, int],
+    excluded: int = 0,
+    console: Console | None = None,
+) -> None:
+    """Render snapshot completion summary.
+
+    Args:
+        output_dir: Path to the snapshot directory.
+        counts: Dict mapping object type to count (e.g. {"tables": 3, "views": 1}).
+        excluded: Number of objects excluded by filter.
+        console: Optional Console for testability.
+    """
+    console = console or Console()
+
+    table = Table(show_header=False, box=None, padding=(0, 2))
+    table.add_column(style="bold")
+    table.add_column(justify="right")
+
+    total = 0
+    for obj_type, count in counts.items():
+        if count > 0:
+            table.add_row(obj_type.replace("_", " ").title(), str(count))
+            total += count
+
+    status_text = Text()
+    status_text.append(f"\nSnapshot saved to ", style="dim")
+    status_text.append(output_dir, style="bold")
+    status_text.append(f"\n{total} objects captured", style="green")
+    if excluded:
+        status_text.append(f", {excluded} excluded", style="dim")
+
+    panel = Panel(
+        Group(table, status_text),
+        title="[bold]Schema Snapshot[/bold]",
+        border_style="blue",
+    )
+    console.print(panel)
+
+
+def render_diff_report(
+    diffs: list[Any],
+    *,
+    console: Console | None = None,
+) -> None:
+    """Render schema diff results as a Rich table.
+
+    Args:
+        diffs: List of SchemaDiff objects from compare_schemas().
+        console: Optional Console for testability.
+    """
+    from clickhouse_alembic.diff import DiffStatus
+
+    console = console or Console()
+
+    in_sync = [d for d in diffs if d.status == DiffStatus.IN_SYNC]
+    modified = [d for d in diffs if d.status == DiffStatus.MODIFIED]
+    local_only = [d for d in diffs if d.status == DiffStatus.LOCAL_ONLY]
+    remote_only = [d for d in diffs if d.status == DiffStatus.REMOTE_ONLY]
+
+    has_drift = bool(modified or local_only or remote_only)
+
+    if not has_drift:
+        console.print(f"[green]All {len(in_sync)} objects in sync.[/green]")
+        return
+
+    table = Table(title="Schema Diff", show_lines=False)
+    table.add_column("Status", width=12)
+    table.add_column("Type", width=20)
+    table.add_column("Name", width=30)
+    table.add_column("Details")
+
+    for d in local_only:
+        table.add_row(
+            Text("LOCAL ONLY", style="yellow"),
+            d.obj_type,
+            d.name,
+            "Exists in snapshot but not in DB",
+        )
+
+    for d in remote_only:
+        table.add_row(
+            Text("REMOTE ONLY", style="cyan"),
+            d.obj_type,
+            d.name,
+            "Exists in DB but not in snapshot",
+        )
+
+    for d in modified:
+        details = "; ".join(fd.message for fd in d.field_diffs)
+        table.add_row(
+            Text("MODIFIED", style="bold red"),
+            d.obj_type,
+            d.name,
+            details,
+        )
+
+    console.print(table)
+    console.print()
+
+    parts = []
+    if modified:
+        parts.append(f"[bold red]{len(modified)} modified[/bold red]")
+    if local_only:
+        parts.append(f"[yellow]{len(local_only)} local only[/yellow]")
+    if remote_only:
+        parts.append(f"[cyan]{len(remote_only)} remote only[/cyan]")
+    if in_sync:
+        parts.append(f"[green]{len(in_sync)} in sync[/green]")
+
+    console.print(f"  {', '.join(parts)}")
+
+
+_OBJ_TYPE_STYLES = {
+    "table": ("bold", "T"),
+    "view": ("cyan", "V"),
+    "materialized_view": ("magenta", "MV"),
+    "dictionary": ("yellow", "D"),
+}
+
+_DEP_TYPE_LABELS = {
+    "schema": "[dim]schema[/dim]",
+    "data_flow": "[bold blue]data_flow[/bold blue]",
+}
+
+
+def render_dependency_tree(
+    graph: Any,
+    *,
+    console: Console | None = None,
+) -> None:
+    """Render a dependency graph as a Rich Tree.
+
+    Each root node (no incoming edges) gets a tree branch. Dependent objects
+    are shown as children with edge type annotations.
+
+    Args:
+        graph: A DependencyGraph from introspect.
+        console: Optional Console for testability.
+    """
+    console = console or Console()
+
+    if not graph.nodes:
+        console.print("[dim]No objects found in database.[/dim]")
+        return
+
+    tree = Tree("[bold]Dependency Graph[/bold]")
+
+    # Build adjacency: source -> [(target, dep_type)]
+    children_map: dict[str, list[tuple[str, str]]] = {name: [] for name in graph.nodes}
+    has_parent: set[str] = set()
+    for edge in graph.edges:
+        if edge.source in children_map and edge.target in graph.nodes:
+            children_map[edge.source].append((edge.target, edge.dep_type.value))
+            has_parent.add(edge.target)
+
+    # Roots: nodes with no incoming edges
+    roots = [name for name in graph.nodes if name not in has_parent]
+    if not roots:
+        # All nodes have parents (cycles) — just show all
+        roots = sorted(graph.nodes.keys())
+
+    def _add_node(parent_tree: Tree, name: str, dep_label: str | None, visited: set[str]) -> None:
+        node = graph.nodes[name]
+        style, prefix = _OBJ_TYPE_STYLES.get(node.obj_type, ("", "?"))
+        label = f"[{style}][{prefix}][/{style}] {name}"
+        if dep_label:
+            label += f"  {dep_label}"
+
+        if name in visited:
+            parent_tree.add(f"{label} [dim](circular)[/dim]")
+            return
+
+        branch = parent_tree.add(label)
+        visited.add(name)
+
+        for child_name, child_dep_type in children_map.get(name, []):
+            dep_str = _DEP_TYPE_LABELS.get(child_dep_type, child_dep_type)
+            _add_node(branch, child_name, dep_str, visited)
+
+    for root_name in sorted(roots):
+        _add_node(tree, root_name, None, set())
+
+    console.print(tree)
+    console.print()
+
+    # Summary
+    type_counts: dict[str, int] = {}
+    for node in graph.nodes.values():
+        type_counts[node.obj_type] = type_counts.get(node.obj_type, 0) + 1
+
+    parts = []
+    for obj_type, count in sorted(type_counts.items()):
+        _, prefix = _OBJ_TYPE_STYLES.get(obj_type, ("", "?"))
+        parts.append(f"{count} {obj_type.replace('_', ' ')}s [{prefix}]")
+
+    console.print(f"  {', '.join(parts)} — {len(graph.edges)} edges")

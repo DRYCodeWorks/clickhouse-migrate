@@ -42,3 +42,12 @@ environments:
     host: your-prod-instance.clickhouse.cloud
     database: {project_name}
     migration_user: migration_prod
+
+# Optional: Pre/post migration hooks
+# SQL statements executed before/after each migration run.
+# Use {db} placeholder for the database name.
+# hooks:
+#   pre_migrate:
+#     - "SELECT 1"  # validation query
+#   post_migrate:
+#     - "SYSTEM RELOAD DICTIONARY {db}.dict_regions ON CLUSTER default"

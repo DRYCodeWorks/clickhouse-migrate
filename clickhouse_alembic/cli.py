@@ -630,5 +630,315 @@ def lint(environment: str | None) -> None:
     sys.exit(1 if report.has_errors else 0)
 
 
+@main.command()
+@click.argument("environment")
+@click.option("--validate", "-v", "validate_sql", type=click.Path(exists=True),
+              help="Validate a SQL file against the dependency graph")
+def deps(environment: str, validate_sql: str | None) -> None:
+    """Show materialized view and dictionary dependency graph.
+
+    Queries the live database to build a dependency graph of all tables,
+    views, materialized views, and dictionaries, then renders it as a tree.
+
+    Use --validate to check if a SQL file would break any dependencies.
+
+    \b
+    Examples:
+      ch-migrate deps dev
+      ch-migrate deps dev --validate migrations/sql/history/tables/users/drop.sql
+    """
+    from clickhouse_alembic.connection import get_client
+    from clickhouse_alembic.deps import build_dependency_graph, validate_migration
+    from clickhouse_alembic.display import render_dependency_tree
+
+    config_path = Path.cwd() / "config.yaml"
+    try:
+        env_config = get_env_config(environment, config_path)
+    except Exception as e:
+        click.echo(f"Error loading config: {e}", err=True)
+        sys.exit(1)
+
+    database = env_config["database"]
+
+    try:
+        client = get_client(env_config)
+    except Exception as e:
+        click.echo(f"Error connecting to {environment}: {e}", err=True)
+        sys.exit(1)
+
+    click.echo(f"Building dependency graph for {environment} ({database})...")
+
+    try:
+        graph = build_dependency_graph(client, database)
+    except Exception as e:
+        click.echo(f"Error building dependency graph: {e}", err=True)
+        sys.exit(1)
+
+    render_dependency_tree(graph)
+
+    if validate_sql:
+        sql_content = Path(validate_sql).read_text()
+        warnings = validate_migration(sql_content, graph)
+        if warnings:
+            click.echo()
+            for w in warnings:
+                style = "red" if w.severity == "error" else "yellow"
+                click.echo(click.style(f"  [{w.severity.upper()}] {w.message}", fg=style))
+            sys.exit(1)
+        else:
+            click.echo(click.style("\n  Migration validation passed.", fg="green"))
+
+
+@main.command(name="diff")
+@click.argument("environment")
+@click.option(
+    "--snapshot-dir",
+    "-s",
+    type=click.Path(exists=True),
+    help="Path to a snapshot directory to compare against. Defaults to latest snapshot.",
+)
+def diff_cmd(environment: str, snapshot_dir: str | None) -> None:
+    """Detect schema drift between local snapshot and live database.
+
+    Compares the most recent snapshot (or a specified one) against the live
+    database schema. Exit code 0 if in sync, 1 if drift detected.
+
+    \b
+    Examples:
+      ch-migrate diff dev
+      ch-migrate diff dev --snapshot-dir migrations/sql/snapshots/20260305_120000
+    """
+    from clickhouse_alembic.connection import get_client
+    from clickhouse_alembic.diff import DiffStatus, compare_schemas
+    from clickhouse_alembic.display import render_diff_report
+    from clickhouse_alembic.introspect import Schema, get_live_schema, parse_create_statement
+
+    config_path = Path.cwd() / "config.yaml"
+    try:
+        env_config = get_env_config(environment, config_path)
+    except Exception as e:
+        click.echo(f"Error loading config: {e}", err=True)
+        sys.exit(1)
+
+    database = env_config["database"]
+
+    # Resolve snapshot directory
+    if snapshot_dir:
+        snap_path = Path(snapshot_dir)
+    else:
+        snapshots_base = Path.cwd() / "migrations" / "sql" / "snapshots"
+        if not snapshots_base.exists():
+            click.echo("Error: No snapshots found. Run 'ch-migrate snapshot' first.", err=True)
+            sys.exit(1)
+        dirs = sorted(snapshots_base.iterdir())
+        if not dirs:
+            click.echo("Error: No snapshots found. Run 'ch-migrate snapshot' first.", err=True)
+            sys.exit(1)
+        snap_path = dirs[-1]
+
+    click.echo(f"Comparing snapshot {snap_path.name} against live {environment} ({database})...")
+
+    # Load local schema from snapshot files
+    local_schema = Schema(database=database)
+    type_dirs = {
+        "tables": "table",
+        "views": "view",
+        "materialized_views": "materialized_view",
+        "dictionaries": "dictionary",
+    }
+    schema_attrs = {
+        "table": local_schema.tables,
+        "view": local_schema.views,
+        "materialized_view": local_schema.materialized_views,
+        "dictionary": local_schema.dictionaries,
+    }
+
+    for dir_name, obj_type in type_dirs.items():
+        type_path = snap_path / dir_name
+        if not type_path.exists():
+            continue
+        for sql_file in sorted(type_path.glob("*.sql")):
+            ddl = sql_file.read_text()
+            name = sql_file.stem
+            parsed = parse_create_statement(ddl)
+            if parsed:
+                schema_attrs[obj_type][name] = parsed
+            else:
+                # Store minimal object with raw DDL
+                from clickhouse_alembic.introspect import (
+                    DictDefinition,
+                    MVDefinition,
+                    TableDefinition,
+                    ViewDefinition,
+                )
+                fallback_types = {
+                    "table": lambda: TableDefinition(name=name, engine="", raw_ddl=ddl),
+                    "view": lambda: ViewDefinition(name=name, select_query="", raw_ddl=ddl),
+                    "materialized_view": lambda: MVDefinition(name=name, raw_ddl=ddl),
+                    "dictionary": lambda: DictDefinition(name=name, raw_ddl=ddl),
+                }
+                schema_attrs[obj_type][name] = fallback_types[obj_type]()
+
+    # Get live schema
+    try:
+        client = get_client(env_config)
+        live_schema = get_live_schema(client, database)
+    except Exception as e:
+        click.echo(f"Error connecting to {environment}: {e}", err=True)
+        sys.exit(1)
+
+    # Compare
+    diffs = compare_schemas(local_schema, live_schema)
+    render_diff_report(diffs)
+
+    has_drift = any(d.status != DiffStatus.IN_SYNC for d in diffs)
+    sys.exit(1 if has_drift else 0)
+
+
+@main.command(name="upgrade-env")
+def upgrade_env() -> None:
+    """Regenerate migrations/env.py from the latest ch-migrate version.
+
+    Updates the Alembic environment file to the latest version shipped with
+    ch-migrate. This is needed when upgrading ch-migrate to pick up new
+    features like execution hooks.
+
+    The previous env.py is backed up as env.py.bak.
+    """
+    env_py_src = Path(__file__).parent / "env.py"
+    env_py_dst = Path.cwd() / "migrations" / "env.py"
+
+    if not env_py_dst.parent.exists():
+        click.echo("Error: migrations/ directory not found. Run 'ch-migrate init' first.", err=True)
+        sys.exit(1)
+
+    if not env_py_src.exists():
+        click.echo("Error: package env.py not found.", err=True)
+        sys.exit(1)
+
+    # Back up existing env.py if present
+    if env_py_dst.exists():
+        backup = env_py_dst.with_suffix(".py.bak")
+        shutil.copy(env_py_dst, backup)
+        click.echo(f"  Backed up existing env.py to {backup.name}")
+
+    shutil.copy(env_py_src, env_py_dst)
+    click.echo(f"  Updated migrations/env.py")
+    click.echo("")
+    click.echo("env.py has been upgraded. If you have custom modifications,")
+    click.echo("compare with env.py.bak and reapply them.")
+
+
+@main.command()
+@click.argument("environment")
+@click.option(
+    "--exclude",
+    "-e",
+    multiple=True,
+    help="Glob patterns to exclude (e.g., --exclude 'system_*' --exclude 'peerdb_*')",
+)
+@click.option(
+    "--filter",
+    "-f",
+    "include_filter",
+    multiple=True,
+    help="Glob patterns to include (only matching objects are captured)",
+)
+def snapshot(environment: str, exclude: tuple[str, ...], include_filter: tuple[str, ...]) -> None:
+    """Capture a schema snapshot from a live database.
+
+    Connects to the environment and writes CREATE statements for all tables,
+    views, materialized views, and dictionaries to a timestamped directory.
+
+    \b
+    Examples:
+      ch-migrate snapshot dev
+      ch-migrate snapshot dev --exclude 'system_*' --exclude 'peerdb_*'
+      ch-migrate snapshot dev --filter 'geo_*'
+    """
+    import fnmatch
+
+    from clickhouse_alembic.connection import get_client
+    from clickhouse_alembic.display import render_snapshot_progress
+    from clickhouse_alembic.introspect import Schema, get_live_schema
+
+    config_path = Path.cwd() / "config.yaml"
+    try:
+        env_config = get_env_config(environment, config_path)
+    except Exception as e:
+        click.echo(f"Error loading config: {e}", err=True)
+        sys.exit(1)
+
+    database = env_config["database"]
+
+    try:
+        client = get_client(env_config)
+    except Exception as e:
+        click.echo(f"Error connecting to {environment}: {e}", err=True)
+        sys.exit(1)
+
+    click.echo(f"Capturing schema from {environment} ({database})...")
+
+    try:
+        schema = get_live_schema(client, database)
+    except Exception as e:
+        click.echo(f"Error introspecting database: {e}", err=True)
+        sys.exit(1)
+
+    # Build output directory
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    snapshot_dir = Path.cwd() / "migrations" / "sql" / "snapshots" / timestamp
+
+    # Flatten all exclude patterns (support comma-separated within a single --exclude)
+    exclude_patterns = []
+    for pat in exclude:
+        exclude_patterns.extend(p.strip() for p in pat.split(",") if p.strip())
+
+    include_patterns = []
+    for pat in include_filter:
+        include_patterns.extend(p.strip() for p in pat.split(",") if p.strip())
+
+    def should_include(name: str) -> bool:
+        if include_patterns and not any(fnmatch.fnmatch(name, p) for p in include_patterns):
+            return False
+        if any(fnmatch.fnmatch(name, p) for p in exclude_patterns):
+            return False
+        return True
+
+    # Write DDL files organized by type
+    type_map = {
+        "tables": schema.tables,
+        "views": schema.views,
+        "materialized_views": schema.materialized_views,
+        "dictionaries": schema.dictionaries,
+    }
+
+    counts: dict[str, int] = {}
+    excluded_count = 0
+
+    for type_name, objects in type_map.items():
+        count = 0
+        for name, obj in objects.items():
+            if not should_include(name):
+                excluded_count += 1
+                continue
+            type_dir = snapshot_dir / type_name
+            type_dir.mkdir(parents=True, exist_ok=True)
+            ddl = obj.raw_ddl if obj.raw_ddl else f"-- No DDL captured for {name}\n"
+            (type_dir / f"{name}.sql").write_text(ddl)
+            count += 1
+        counts[type_name] = count
+
+    if sum(counts.values()) == 0:
+        click.echo("No objects matched the filter criteria.", err=True)
+        sys.exit(1)
+
+    render_snapshot_progress(
+        str(snapshot_dir.relative_to(Path.cwd())),
+        counts,
+        excluded=excluded_count,
+    )
+
+
 if __name__ == "__main__":
     main()
