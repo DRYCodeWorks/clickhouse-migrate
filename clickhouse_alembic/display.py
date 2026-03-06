@@ -408,13 +408,20 @@ def render_dependency_tree(
 
     tree = Tree("[bold]Dependency Graph[/bold]")
 
-    # Build adjacency: source -> [(target, dep_type)]
-    children_map: dict[str, list[tuple[str, str]]] = {name: [] for name in graph.nodes}
+    # Build adjacency: source -> [(target, dep_label)]
+    # Deduplicate: if multiple edge types exist for the same pair, combine them
+    children_raw: dict[str, dict[str, list[str]]] = {name: {} for name in graph.nodes}
     has_parent: set[str] = set()
     for edge in graph.edges:
-        if edge.source in children_map and edge.target in graph.nodes:
-            children_map[edge.source].append((edge.target, edge.dep_type.value))
+        if edge.source in children_raw and edge.target in graph.nodes:
+            children_raw[edge.source].setdefault(edge.target, []).append(edge.dep_type.value)
             has_parent.add(edge.target)
+
+    children_map: dict[str, list[tuple[str, str]]] = {}
+    for source, targets in children_raw.items():
+        children_map[source] = [
+            (target, " + ".join(dep_types)) for target, dep_types in targets.items()
+        ]
 
     # Roots: nodes with no incoming edges
     roots = [name for name in graph.nodes if name not in has_parent]

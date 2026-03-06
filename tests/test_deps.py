@@ -146,6 +146,40 @@ class TestRenderDependencyTree:
         text = _re.sub(r"\x1b\[[0-9;]*m", "", output.getvalue())
         assert "4 edges" in text
 
+    def test_deduplicates_multi_edge_children(self):
+        """Nodes with both data_flow and schema edges should appear once, not as 'circular'."""
+        from io import StringIO
+        from rich.console import Console
+        from clickhouse_alembic.introspect import (
+            DependencyEdge,
+            DependencyGraph,
+            DepType,
+            ObjectNode,
+        )
+        from clickhouse_alembic.display import render_dependency_tree
+
+        graph = DependencyGraph(
+            nodes={
+                "logs": ObjectNode(name="logs", obj_type="table"),
+                "attrs_mv": ObjectNode(name="attrs_mv", obj_type="materialized_view"),
+                "attrs": ObjectNode(name="attrs", obj_type="table"),
+            },
+            edges=[
+                DependencyEdge(source="logs", target="attrs_mv", dep_type=DepType.DATA_FLOW),
+                DependencyEdge(source="logs", target="attrs_mv", dep_type=DepType.SCHEMA),
+                DependencyEdge(source="attrs_mv", target="attrs", dep_type=DepType.DATA_FLOW),
+            ],
+        )
+
+        buf = StringIO()
+        console = Console(file=buf, force_terminal=False, width=120)
+        render_dependency_tree(graph, console=console)
+        output = buf.getvalue()
+
+        assert "circular" not in output
+        assert "attrs_mv" in output
+        assert "attrs" in output
+
     def test_handles_circular_dependency(self):
         graph = DependencyGraph()
         graph.nodes = {
