@@ -56,7 +56,6 @@ def validate_migration(sql: str, graph: DependencyGraph) -> list[MigrationWarnin
         if table_name in graph.nodes:
             affected = graph.affected_by_drop(table_name)
             if affected:
-                affected_names = [n.name for n in affected]
                 # Distinguish schema vs data_flow impact
                 schema_deps = []
                 data_flow_deps = []
