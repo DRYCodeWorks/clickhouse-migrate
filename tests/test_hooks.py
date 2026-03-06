@@ -92,6 +92,32 @@ class TestRunHooks:
         run_hooks(connection, [], db="mydb", phase="post_migrate", revision="abc123")
         connection.execute.assert_not_called()
 
+    def test_unknown_placeholders_preserved(self):
+        """Unknown placeholders like {cluster} or {param:String} are left as-is."""
+        connection = MagicMock()
+        hooks = [
+            "SYSTEM RELOAD DICTIONARY {db}.dict_a ON CLUSTER {cluster}",
+        ]
+
+        run_hooks(connection, hooks, db="mydb", phase="post_migrate", revision="abc123")
+
+        executed_sql = str(connection.execute.call_args_list[0].args[0])
+        assert "mydb.dict_a" in executed_sql
+        assert "{cluster}" in executed_sql
+
+    def test_clickhouse_parameterized_syntax_preserved(self):
+        """ClickHouse {param:Type} syntax in hooks is not mangled."""
+        connection = MagicMock()
+        hooks = [
+            "SELECT count() FROM {db}.logs WHERE env = {env:String}",
+        ]
+
+        run_hooks(connection, hooks, db="mydb", phase="pre_migrate", revision="abc123")
+
+        executed_sql = str(connection.execute.call_args_list[0].args[0])
+        assert "mydb.logs" in executed_sql
+        assert "{env:String}" in executed_sql
+
 
 class TestConfigIntegration:
     def test_hooks_parsed_from_config_yaml(self, tmp_path: Path, monkeypatch):

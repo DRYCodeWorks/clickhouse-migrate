@@ -65,7 +65,10 @@ def run_hooks(
         revision: Migration revision being processed (for logging)
     """
     for i, hook_sql in enumerate(hooks, 1):
-        resolved = hook_sql.format(db=db)
+        # Use explicit replace instead of str.format() to avoid KeyError on
+        # unknown placeholders (e.g. {cluster}) and ClickHouse parameterized
+        # query syntax like {param:String}.
+        resolved = hook_sql.replace("{db}", db)
         logger.info("[%s] hook %d/%d for %s: %s", phase, i, len(hooks), revision, resolved)
         connection.execute(text(resolved))
         connection.commit()
