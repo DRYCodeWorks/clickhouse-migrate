@@ -124,6 +124,39 @@ class TestCompareSchemas:
         assert len(modified) == 1
         assert any("type differs" in fd.message for fd in modified[0].field_diffs)
 
+    def test_detects_column_codec_change(self):
+        """Codec changes on a column should be detected as drift."""
+        local_schema = Schema(
+            database="test",
+            tables={
+                "logs": TableDefinition(
+                    name="logs",
+                    engine="MergeTree",
+                    columns=[
+                        ColumnDefinition(name="body", type="String", codec="ZSTD(1)"),
+                    ],
+                    order_by=["id"],
+                ),
+            },
+        )
+        remote_schema = Schema(
+            database="test",
+            tables={
+                "logs": TableDefinition(
+                    name="logs",
+                    engine="MergeTree",
+                    columns=[
+                        ColumnDefinition(name="body", type="String", codec="ZSTD(3)"),
+                    ],
+                    order_by=["id"],
+                ),
+            },
+        )
+        diffs = compare_schemas(local_schema, remote_schema)
+        modified = [d for d in diffs if d.status == DiffStatus.MODIFIED]
+        assert len(modified) == 1
+        assert any("codec" in f.field_name for f in modified[0].field_diffs)
+
     def test_detects_engine_change(self):
         local = Schema(database="db")
         live = Schema(database="db")

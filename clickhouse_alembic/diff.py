@@ -87,6 +87,13 @@ def _compare_columns(
                     remote_value=remote_col.default_expr,
                     message=f"column '{name}' default expression differs",
                 ))
+            if local_col.codec != remote_col.codec:
+                diffs.append(FieldDiff(
+                    field_name=f"column '{name}' codec",
+                    local_value=local_col.codec,
+                    remote_value=remote_col.codec,
+                    message=f"column '{name}' codec differs: {local_col.codec} vs {remote_col.codec}",
+                ))
 
     return diffs
 
