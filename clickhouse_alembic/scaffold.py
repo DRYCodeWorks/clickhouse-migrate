@@ -53,8 +53,13 @@ def find_dependent_dictionaries(
         db = env_config["database"]
         result = client.query(
             "SELECT name FROM system.dictionaries "
-            "WHERE database = {db:String} AND source LIKE {pattern:String}",
-            parameters={"db": db, "pattern": f"%{table_name}%"},
+            "WHERE database = {db:String} "
+            "AND (source LIKE {exact:String} OR source LIKE {dotted:String})",
+            parameters={
+                "db": db,
+                "exact": f"%'{table_name}'%",
+                "dotted": f"%.{table_name}%",
+            },
         )
         return [row[0] for row in result.result_rows]
     except Exception:

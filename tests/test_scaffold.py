@@ -6,6 +6,7 @@ import pytest
 
 from clickhouse_alembic.scaffold import (
     _make_shadow_ddl,
+    find_dependent_dictionaries,
     generate_exchange_migration,
     generate_exchange_sql,
     rewrite_migration_file,
@@ -155,3 +156,29 @@ class TestRewriteMigrationFile:
 
         content = migration.read_text()
         assert "SYSTEM RELOAD DICTIONARY {db}.dict_users" in content
+
+
+class TestFindDependentDictionaries:
+    def test_uses_precise_pattern_matching(self):
+        """Search pattern should not match substring (e.g., 'logs' matching 'old_logs')."""
+        from unittest.mock import MagicMock, patch
+
+        mock_client = MagicMock()
+        mock_client.query.return_value.result_rows = []
+
+        env_config = {
+            "database": "default",
+            "host": "localhost",
+            "user": "default",
+            "password": "test",
+        }
+
+        with patch("clickhouse_alembic.connection.get_client", return_value=mock_client):
+            find_dependent_dictionaries(env_config, "logs")
+
+        call_args = mock_client.query.call_args
+        params = call_args[1].get("parameters") or (call_args[0][1] if len(call_args[0]) > 1 else {})
+
+        # The pattern should NOT be a bare '%logs%' that matches 'old_logs'
+        if "pattern" in params:
+            assert params["pattern"] != "%logs%", "Pattern should use precise matching, not bare substring"
