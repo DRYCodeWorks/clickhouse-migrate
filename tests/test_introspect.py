@@ -308,6 +308,19 @@ class TestParseCreateMV:
         assert "events" in source_names
         assert "users" in source_names
 
+    def test_mv_ignores_function_calls_as_sources(self):
+        """Functions like JSONAllPaths() should not appear as source tables."""
+        ddl = (
+            "CREATE MATERIALIZED VIEW default.attrs_mv TO default.attrs AS "
+            "SELECT path, project_id "
+            "FROM default.logs ARRAY JOIN JSONAllPaths(log_attributes_json) AS path"
+        )
+        mv = parse_create_mv(ddl)
+        assert mv is not None
+        assert "default.logs" in mv.source_tables
+        # JSONAllPaths is a function, not a table
+        assert all("JSONAllPaths" not in t for t in mv.source_tables)
+
     def test_unparseable_returns_none(self):
         assert parse_create_mv("CREATE TABLE foo (id UInt64) ENGINE = MergeTree") is None
 

@@ -337,9 +337,9 @@ def _parse_settings(settings_str: str) -> dict[str, str]:
 def _extract_from_tables(select_query: str) -> list[str]:
     """Extract table references from a SELECT query (FROM and JOIN clauses)."""
     tables: list[str] = []
-    # Match FROM db.table or FROM table (not subqueries)
+    # Match FROM db.table or FROM table (not subqueries or function calls)
     for m in re.finditer(
-        r"(?:FROM|JOIN)\s+(?:`?(\w+)`?\.)?`?(\w+)`?", select_query, re.IGNORECASE
+        r"(?:FROM|JOIN)\s+(?:`?(\w+)`?\.)?`?(\w+)`?(?!\s*\()", select_query, re.IGNORECASE
     ):
         db_part = m.group(1)
         table_name = m.group(2)
