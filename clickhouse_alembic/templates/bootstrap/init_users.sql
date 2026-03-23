@@ -19,6 +19,7 @@ CREATE DATABASE IF NOT EXISTS {db};
 CREATE ROLE IF NOT EXISTS {project}_migration_role;
 GRANT ALL ON {db}.* TO {project}_migration_role;
 GRANT CREATE TEMPORARY TABLE ON *.* TO {project}_migration_role;
+GRANT SELECT ON system.* TO {project}_migration_role WITH GRANT OPTION;
 
 -- =============================================================================
 -- USERS (always created)
