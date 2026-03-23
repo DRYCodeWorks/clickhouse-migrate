@@ -103,7 +103,7 @@ class TestBuildBootstrapSql:
             migration_user="migration_dev",
             migration_password="secret123",
         )
-        assert "GRANT CURRENT GRANTS(SELECT ON system.* WITH GRANT OPTION) TO myproject_migration_role" in sql
+        assert "GRANT CURRENT GRANTS(SELECT ON system.*) TO myproject_migration_role WITH GRANT OPTION" in sql
 
     def test_excludes_dict_reader_when_not_configured(self):
         sql = build_bootstrap_sql(
