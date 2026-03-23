@@ -95,15 +95,15 @@ class TestBuildBootstrapSql:
         # ROLE ADMIN for granting roles to users
         assert "GRANT ROLE ADMIN ON *.* TO myproject_migration_role" in sql
 
-    def test_includes_system_table_grant_with_grant_option(self):
-        """Test that migration role has SELECT on system.* WITH GRANT OPTION."""
+    def test_includes_system_table_grant_with_current_grants(self):
+        """Test that migration role gets system.* via CURRENT GRANTS for Cloud compat."""
         sql = build_bootstrap_sql(
             project="myproject",
             db="myproject_dev",
             migration_user="migration_dev",
             migration_password="secret123",
         )
-        assert "GRANT SELECT ON system.* TO myproject_migration_role WITH GRANT OPTION" in sql
+        assert "GRANT CURRENT GRANTS(SELECT ON system.* WITH GRANT OPTION) TO myproject_migration_role" in sql
 
     def test_excludes_dict_reader_when_not_configured(self):
         sql = build_bootstrap_sql(
