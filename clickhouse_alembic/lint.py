@@ -9,6 +9,10 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from clickhouse_alembic.mv_validate import (
+    _read_migration_sql,
+    validate_mv_migrations,
+)
 from clickhouse_alembic.rebase import RevisionGraph, build_revision_graph, parse_migration
 
 
@@ -55,6 +59,7 @@ class LintConfig:
 
     large_table_threshold: int = 100_000_000
     rules: dict[str, Severity] = field(default_factory=dict)
+    mv_validation_cutoff: str | None = None
 
     @classmethod
     def from_config(cls, config: dict[str, Any]) -> LintConfig:
@@ -71,7 +76,13 @@ class LintConfig:
             except ValueError:
                 pass
 
-        return cls(large_table_threshold=threshold, rules=rules)
+        cutoff = lint_section.get("mv_validation_cutoff")
+
+        return cls(
+            large_table_threshold=threshold,
+            rules=rules,
+            mv_validation_cutoff=cutoff,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -448,6 +459,67 @@ class MVDependencyRule(LintRule):
         return results
 
 
+class MVDeclarationRule(LintRule):
+    """Flags CREATE MATERIALIZED VIEW without MV_DECLARATIONS or required grants.
+
+    When a migration creates a materialized view, ClickHouse requires the
+    inserting user to have INSERT on the target table. This rule enforces that
+    the migration declares its MV dependencies via MV_DECLARATIONS and that
+    companion grants exist in the migration batch.
+
+    Configurable via config.yaml:
+        lint:
+          rules:
+            mv_declarations: error  # error (default), warn, or off
+          mv_validation_cutoff: "2026-03-25"  # Optional grandfathering date
+    """
+
+    name = "mv_declarations"
+    default_severity = Severity.ERROR
+
+    def check(self, sql: str, **kwargs: Any) -> list[LintResult]:
+        config = kwargs.get("config") or LintConfig()
+        severity = self.get_severity(config)
+        if severity == Severity.OFF:
+            return []
+
+        graph: RevisionGraph | None = kwargs.get("graph")
+        if graph is None:
+            return []
+
+        # Find the versions_dir from any migration in the graph
+        versions_dir = None
+        for migration in graph.migrations.values():
+            versions_dir = migration.path.parent
+            break
+
+        if versions_dir is None:
+            return []
+
+        # Only run validation once per lint pass — on the first migration file
+        first_file = None
+        for migration in sorted(graph.migrations.values(), key=lambda m: m.path.name):
+            first_file = migration.path.name
+            break
+
+        file_path = kwargs.get("file_path", "")
+        if file_path != first_file:
+            return []
+
+        cutoff = config.mv_validation_cutoff
+        mv_errors = validate_mv_migrations(versions_dir, cutoff_date=cutoff)
+
+        return [
+            LintResult(
+                rule=self.name,
+                message=e.message,
+                severity=severity,
+                file=e.file,
+            )
+            for e in mv_errors
+        ]
+
+
 # ---------------------------------------------------------------------------
 # Rule registry
 # ---------------------------------------------------------------------------
@@ -457,6 +529,7 @@ STATIC_RULES: list[LintRule] = [
     IdempotencyRule(),
     ReservedWordRule(),
     MissingOnClusterRule(),
+    MVDeclarationRule(),
 ]
 
 RUNTIME_RULES: list[LintRule] = [
@@ -470,28 +543,6 @@ ALL_RULES: list[LintRule] = STATIC_RULES + RUNTIME_RULES
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
-
-
-def _read_migration_sql(migration_path: Path) -> str:
-    """Read SQL from a migration file's upgrade function.
-
-    Extracts SQL string literals from read_sql() calls and op.execute() calls.
-    Falls back to reading any associated .sql files.
-    """
-    content = migration_path.read_text()
-    sql_parts: list[str] = []
-
-    # Extract string literals from op.execute(...) calls
-    for match in re.finditer(r'op\.execute\(\s*(?:f?"""(.*?)"""|f?"([^"]*)")', content, re.DOTALL):
-        sql_parts.append(match.group(1) or match.group(2) or "")
-
-    # Extract paths from read_sql(...) calls and try to read them
-    for match in re.finditer(r'read_sql\(\s*["\']([^"\']+)["\']', content):
-        sql_path = migration_path.parent.parent / "sql" / match.group(1)
-        if sql_path.exists():
-            sql_parts.append(sql_path.read_text())
-
-    return "\n".join(sql_parts) if sql_parts else content
 
 
 def lint_migrations(
