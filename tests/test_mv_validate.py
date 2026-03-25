@@ -171,6 +171,13 @@ class TestGrantInsertDetection:
         grants = _find_grant_inserts("grant insert on {db}.MyTable to MyUser")
         assert ("mytable", "myuser") in grants
 
+    def test_comma_separated_users(self):
+        grants = _find_grant_inserts(
+            "GRANT INSERT ON {db}.my_table TO user_a, user_b;"
+        )
+        assert ("my_table", "user_a") in grants
+        assert ("my_table", "user_b") in grants
+
     def test_ignores_grant_select(self):
         grants = _find_grant_inserts("GRANT SELECT ON {db}.t TO u")
         assert len(grants) == 0
@@ -390,6 +397,18 @@ class TestRequiredFields:
         errors = validate_mv_migrations(versions)
         assert any("inserting_users" in e.message for e in errors)
 
+    def test_typo_in_required_field_errors(self, tmp_path: Path):
+        """A typo like 'inseritng_users' should be caught as a missing required field."""
+        versions = tmp_path / "versions"
+        _write_migration(
+            versions,
+            "create_mv",
+            sql="CREATE MATERIALIZED VIEW {db}.mv TO {db}.dest AS SELECT 1 FROM {db}.src",
+            mv_declarations='[{"mv_name": "mv", "source_table": "src", "target_table": "dest", "inseritng_users": ["writer"]}]',
+        )
+        errors = validate_mv_migrations(versions)
+        assert any("inserting_users" in e.message for e in errors)
+
 
 class TestGrantInsertValidation:
     """Test GRANT INSERT validation."""
@@ -470,6 +489,20 @@ class TestGrantInsertValidation:
         errors = validate_mv_migrations(versions)
         assert len(errors) == 1
         assert "user_b" in errors[0].message
+
+    def test_comma_separated_grant_to_passes(self, tmp_path: Path):
+        versions = tmp_path / "versions"
+        _write_migration(
+            versions,
+            "create_mv",
+            sql=(
+                "CREATE MATERIALIZED VIEW {db}.my_mv TO {db}.dest AS SELECT 1 FROM {db}.src;\n"
+                "GRANT INSERT ON {db}.dest TO user_a, user_b;"
+            ),
+            mv_declarations='[{"mv_name": "my_mv", "source_table": "src", "target_table": "dest", "inserting_users": ["user_a", "user_b"]}]',
+        )
+        errors = validate_mv_migrations(versions)
+        assert errors == []
 
     def test_multiple_mvs_in_one_migration(self, tmp_path: Path):
         versions = tmp_path / "versions"
@@ -588,6 +621,25 @@ class TestOptionalSourceRLS:
         )
         errors = validate_mv_migrations(versions)
         assert errors == []
+
+    def test_source_rls_no_substring_false_positive(self, tmp_path: Path):
+        """User 'a' should NOT match against policy for 'admin'."""
+        versions = tmp_path / "versions"
+        _write_migration(
+            versions,
+            "create_mv",
+            sql=(
+                "CREATE MATERIALIZED VIEW {db}.mv TO {db}.dest AS SELECT 1 FROM {db}.src;\n"
+                "GRANT INSERT ON {db}.dest TO a;\n"
+                "CREATE ROW POLICY mv_permissive ON {db}.src USING 1 TO admin;"
+            ),
+            mv_declarations=(
+                '[{"mv_name": "mv", "source_table": "src", "target_table": "dest",'
+                ' "inserting_users": ["a"], "source_rls_users": ["a"]}]'
+            ),
+        )
+        errors = validate_mv_migrations(versions)
+        assert any("ROW POLICY" in e.message and "a" in e.message for e in errors)
 
 
 class TestOptionalTargetRLS:

@@ -9,7 +9,10 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from clickhouse_alembic.mv_validate import validate_mv_migrations
+from clickhouse_alembic.mv_validate import (
+    _read_migration_sql,
+    validate_mv_migrations,
+)
 from clickhouse_alembic.rebase import RevisionGraph, build_revision_graph, parse_migration
 
 
@@ -540,28 +543,6 @@ ALL_RULES: list[LintRule] = STATIC_RULES + RUNTIME_RULES
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
-
-
-def _read_migration_sql(migration_path: Path) -> str:
-    """Read SQL from a migration file's upgrade function.
-
-    Extracts SQL string literals from read_sql() calls and op.execute() calls.
-    Falls back to reading any associated .sql files.
-    """
-    content = migration_path.read_text()
-    sql_parts: list[str] = []
-
-    # Extract string literals from op.execute(...) calls
-    for match in re.finditer(r'op\.execute\(\s*(?:f?"""(.*?)"""|f?"([^"]*)")', content, re.DOTALL):
-        sql_parts.append(match.group(1) or match.group(2) or "")
-
-    # Extract paths from read_sql(...) calls and try to read them
-    for match in re.finditer(r'read_sql\(\s*["\']([^"\']+)["\']', content):
-        sql_path = migration_path.parent.parent / "sql" / match.group(1)
-        if sql_path.exists():
-            sql_parts.append(sql_path.read_text())
-
-    return "\n".join(sql_parts) if sql_parts else content
 
 
 def lint_migrations(

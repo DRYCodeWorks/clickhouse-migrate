@@ -117,21 +117,21 @@ _RE_CREATE_MV = re.compile(
     re.IGNORECASE,
 )
 
-# Matches GRANT INSERT ON [db.]table TO user
+# Matches GRANT INSERT ON [db.]table TO user1[, user2, ...]
 # Handles: {db}.table, db.table, table (no db prefix)
-# Handles backtick-quoted identifiers
+# Handles backtick-quoted identifiers and comma-separated user lists
 _RE_GRANT_INSERT = re.compile(
     r"GRANT\s+INSERT\s+ON\s+"
     r"(?:(?:\{[^}]*\}|`?\w+`?)\.)?`?(\w+)`?"
-    r"\s+TO\s+`?(\w+)`?",
+    r"\s+TO\s+(.+?)(?:;|\n|\Z)",
     re.IGNORECASE,
 )
 
-# Matches GRANT SELECT ON [db.]table TO user
+# Matches GRANT SELECT ON [db.]table TO user1[, user2, ...]
 _RE_GRANT_SELECT = re.compile(
     r"GRANT\s+SELECT(?:\([^)]*\))?\s+ON\s+"
     r"(?:(?:\{[^}]*\}|`?\w+`?)\.)?`?(\w+)`?"
-    r"\s+TO\s+`?(\w+)`?",
+    r"\s+TO\s+(.+?)(?:;|\n|\Z)",
     re.IGNORECASE,
 )
 
@@ -157,26 +157,44 @@ def _sql_has_create_mv(sql: str) -> bool:
     return bool(_RE_CREATE_MV.search(sql))
 
 
+def _parse_user_list(users_str: str) -> list[str]:
+    """Parse a comma-separated user list from a GRANT statement.
+
+    Handles backtick-quoted identifiers and strips whitespace.
+    """
+    return [
+        u.strip().strip("`").lower()
+        for u in users_str.split(",")
+        if u.strip().strip("`")
+    ]
+
+
 def _find_grant_inserts(content: str) -> list[tuple[str, str]]:
     """Find all GRANT INSERT ON table TO user patterns.
 
     Returns list of (table_name, user_name) tuples, lowercased.
+    Handles comma-separated user lists (e.g., TO user_a, user_b).
     """
-    return [
-        (m.group(1).lower(), m.group(2).lower())
-        for m in _RE_GRANT_INSERT.finditer(content)
-    ]
+    results: list[tuple[str, str]] = []
+    for m in _RE_GRANT_INSERT.finditer(content):
+        table = m.group(1).lower()
+        for user in _parse_user_list(m.group(2)):
+            results.append((table, user))
+    return results
 
 
 def _find_grant_selects(content: str) -> list[tuple[str, str]]:
     """Find all GRANT SELECT ON table TO user patterns.
 
     Returns list of (table_name, user_name) tuples, lowercased.
+    Handles comma-separated user lists (e.g., TO user_a, user_b).
     """
-    return [
-        (m.group(1).lower(), m.group(2).lower())
-        for m in _RE_GRANT_SELECT.finditer(content)
-    ]
+    results: list[tuple[str, str]] = []
+    for m in _RE_GRANT_SELECT.finditer(content):
+        table = m.group(1).lower()
+        for user in _parse_user_list(m.group(2)):
+            results.append((table, user))
+    return results
 
 
 def _find_row_policies(content: str) -> list[tuple[str, str]]:
@@ -206,9 +224,16 @@ def _find_permissive_row_policies(content: str) -> list[tuple[str, str]]:
 # ---------------------------------------------------------------------------
 
 
-def _read_migration_sql(path: Path) -> str:
-    """Extract SQL from a migration file's op.execute() calls and read_sql() files."""
-    content = path.read_text()
+def _read_migration_sql_from_content(content: str, path: Path) -> str:
+    """Extract SQL from migration file content.
+
+    Extracts SQL string literals from op.execute() calls and read_sql() file
+    references. Falls back to returning the full file content if no SQL is found.
+
+    Args:
+        content: The migration file's text content.
+        path: The migration file path (used to resolve read_sql references).
+    """
     sql_parts: list[str] = []
 
     for match in re.finditer(
@@ -222,6 +247,15 @@ def _read_migration_sql(path: Path) -> str:
             sql_parts.append(sql_path.read_text())
 
     return "\n".join(sql_parts) if sql_parts else content
+
+
+def _read_migration_sql(path: Path) -> str:
+    """Extract SQL from a migration file's op.execute() calls and read_sql() files.
+
+    Convenience wrapper that reads the file and delegates to
+    _read_migration_sql_from_content.
+    """
+    return _read_migration_sql_from_content(path.read_text(), path)
 
 
 # ---------------------------------------------------------------------------
@@ -331,7 +365,8 @@ def _check_source_rls(
 
     for user in decl.source_rls_users:
         has_policy = any(
-            table == source and user.lower() in users_str
+            table == source
+            and user.lower() in [u.strip() for u in users_str.split(",")]
             for table, users_str in permissive_policies
         )
         if not has_policy:
@@ -408,14 +443,14 @@ def validate_mv_migrations(
     if not migration_files:
         return errors
 
-    # Collect all content from all migrations (the "batch").
-    # We read full file content so we can match both SQL literals and
-    # Python variable values in the same pass.
+    # Read each file once and cache results.
+    file_cache: dict[Path, tuple[str, str]] = {}  # path -> (raw_content, extracted_sql)
     batch_content_parts: list[str] = []
     for path in migration_files:
-        batch_content_parts.append(path.read_text())
-        # Also read any referenced SQL files
-        sql = _read_migration_sql(path)
+        raw = path.read_text()
+        sql = _read_migration_sql_from_content(raw, path)
+        file_cache[path] = (raw, sql)
+        batch_content_parts.append(raw)
         if sql:
             batch_content_parts.append(sql)
 
@@ -429,7 +464,7 @@ def validate_mv_migrations(
 
     # Validate each migration that creates an MV
     for path in migration_files:
-        sql = _read_migration_sql(path)
+        _, sql = file_cache[path]
         if not sql or not _sql_has_create_mv(sql):
             continue
 

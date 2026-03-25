@@ -233,8 +233,11 @@ def up(environment: str, revision: str, skip_mv_check: bool) -> None:
                     raw_config = load_config(config_path)
                     lint_config = LintConfig.from_config(raw_config)
                     cutoff = lint_config.mv_validation_cutoff
-                except Exception:
-                    pass
+                except Exception as e:
+                    click.echo(
+                        f"Warning: Could not load lint config: {e}",
+                        err=True,
+                    )
 
             mv_errors = validate_mv_migrations(versions_dir, cutoff_date=cutoff)
             if mv_errors:
