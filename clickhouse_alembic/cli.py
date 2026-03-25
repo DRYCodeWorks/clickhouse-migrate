@@ -205,12 +205,60 @@ def bootstrap(environment: str, dry_run: bool, verbose: bool) -> None:
 @main.command()
 @click.argument("environment")
 @click.option("--revision", "-r", default="head", help="Revision to upgrade to (default: head)")
-def up(environment: str, revision: str) -> None:
+@click.option(
+    "--skip-mv-check",
+    is_flag=True,
+    help="Skip materialized view declaration validation",
+)
+def up(environment: str, revision: str, skip_mv_check: bool) -> None:
     """Apply pending migrations.
 
     Runs all unapplied migrations to bring the database to the latest version.
     Use --revision to upgrade to a specific revision instead of head.
+
+    Validates that migrations creating MATERIALIZED VIEWs include proper
+    MV_DECLARATIONS and companion grants. Use --skip-mv-check to bypass.
     """
+    if not skip_mv_check:
+        versions_dir = Path.cwd() / "migrations" / "versions"
+        if versions_dir.exists():
+            from clickhouse_alembic.config import load_config
+            from clickhouse_alembic.lint import LintConfig
+            from clickhouse_alembic.mv_validate import validate_mv_migrations
+
+            cutoff = None
+            config_path = Path.cwd() / "config.yaml"
+            if config_path.exists():
+                try:
+                    raw_config = load_config(config_path)
+                    lint_config = LintConfig.from_config(raw_config)
+                    cutoff = lint_config.mv_validation_cutoff
+                except Exception:
+                    pass
+
+            mv_errors = validate_mv_migrations(versions_dir, cutoff_date=cutoff)
+            if mv_errors:
+                click.echo(
+                    click.style(
+                        "MV declaration validation failed:", fg="red", bold=True
+                    ),
+                    err=True,
+                )
+                for error in mv_errors:
+                    prefix = f"  [{error.file}]"
+                    if error.mv_name:
+                        prefix += f" ({error.mv_name})"
+                    click.echo(
+                        click.style(f"{prefix}: {error.message}", fg="red"),
+                        err=True,
+                    )
+                click.echo(err=True)
+                click.echo(
+                    "Fix the issues above, or use --skip-mv-check to bypass.",
+                    err=True,
+                )
+                sys.exit(1)
+
     _run_alembic(environment, ["upgrade", revision])
 
 
