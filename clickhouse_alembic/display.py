@@ -70,7 +70,9 @@ def render_history(
     console = console or Console()
 
     if db_error:
-        console.print(f"[yellow]Warning: Could not connect to database: {_short_error(db_error)}[/yellow]")
+        console.print(
+            f"[yellow]Warning: Could not connect to database: {_short_error(db_error)}[/yellow]"
+        )
         console.print("[dim]Showing file-based history only (status unknown)[/dim]")
         console.print()
 
@@ -148,9 +150,7 @@ def render_status(
     env_table.add_column()
     env_table.add_row("Host", env_config.get("host", "unknown"))
     env_table.add_row("Database", env_config.get("database", "unknown"))
-    env_table.add_row(
-        "User", env_config.get("migration_user") or env_config.get("user", "unknown")
-    )
+    env_table.add_row("User", env_config.get("migration_user") or env_config.get("user", "unknown"))
 
     all_revisions = set(graph.migrations.keys())
     heads = graph.heads()
@@ -463,4 +463,4 @@ def render_dependency_tree(
         _, prefix = _OBJ_TYPE_STYLES.get(obj_type, ("", "?"))
         parts.append(f"{count} {obj_type.replace('_', ' ')}s [{prefix}]")
 
-    console.print(f"  {', '.join(parts)} — {len(graph.edges)} edges")
+    console.print(f"  {', '.join(parts)} — {len(graph.edges)} edges", soft_wrap=True)
