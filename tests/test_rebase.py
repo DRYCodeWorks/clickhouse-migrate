@@ -14,12 +14,27 @@ from clickhouse_alembic.rebase import (
     rewrite_down_revision,
 )
 
+DownRevision = str | tuple[str, ...] | None
 
-def _write_migration(versions_dir: Path, revision: str, down_revision: str | None, name: str = "migration") -> Path:
+
+def _format_down_revision(down_revision: DownRevision) -> tuple[str, str]:
+    if down_revision is None:
+        return "None", ""
+    if isinstance(down_revision, tuple):
+        return repr(down_revision), ", ".join(down_revision)
+    return f"'{down_revision}'", down_revision
+
+
+def _write_migration(
+    versions_dir: Path,
+    revision: str,
+    down_revision: DownRevision,
+    name: str = "migration",
+) -> Path:
     """Write a minimal migration file and return its path."""
-    down_rev_str = f"'{down_revision}'" if down_revision else "None"
-    revises_str = down_revision if down_revision else ""
-    content = dedent(f"""\
+    down_rev_str, revises_str = _format_down_revision(down_revision)
+    content = dedent(
+        f"""\
         \"""{name}
 
         Revision ID: {revision}
@@ -41,7 +56,8 @@ def _write_migration(versions_dir: Path, revision: str, down_revision: str | Non
 
         def downgrade() -> None:
             pass
-    """)
+    """
+    )
     path = versions_dir / f"2026_01_01_0000_{revision}_{name}.py"
     path.write_text(content)
     return path
@@ -54,6 +70,7 @@ class TestParseMigration:
         assert result is not None
         assert result.revision == "abc123"
         assert result.down_revision == "def456"
+        assert result.down_revisions == ("def456",)
 
     def test_parses_root_migration(self, tmp_path):
         path = _write_migration(tmp_path, "abc123", None)
@@ -61,6 +78,15 @@ class TestParseMigration:
         assert result is not None
         assert result.revision == "abc123"
         assert result.down_revision is None
+        assert result.down_revisions == ()
+
+    def test_parses_merge_down_revisions(self, tmp_path):
+        path = _write_migration(tmp_path, "merge", ("left", "right"))
+        result = parse_migration(path)
+        assert result is not None
+        assert result.revision == "merge"
+        assert result.down_revision is None
+        assert result.down_revisions == ("left", "right")
 
     def test_parses_description_from_docstring(self, tmp_path):
         path = _write_migration(tmp_path, "abc123", "def456", "create users table")
@@ -111,6 +137,17 @@ class TestBuildRevisionGraph:
         heads = sorted(graph.heads())
         assert heads == ["f1b", "f2b"]
 
+    def test_builds_merge_graph(self, tmp_path):
+        _write_migration(tmp_path, "base", None, "base")
+        _write_migration(tmp_path, "left", "base", "left")
+        _write_migration(tmp_path, "right", "base", "right")
+        _write_migration(tmp_path, "merge", ("left", "right"), "merge")
+
+        graph = build_revision_graph(tmp_path)
+        assert graph.heads() == ["merge"]
+        assert graph.children["left"] == ["merge"]
+        assert graph.children["right"] == ["merge"]
+
 
 class TestRevisionGraphHeads:
     def test_single_head(self, tmp_path):
@@ -143,6 +180,29 @@ class TestRevisionGraphAncestors:
 
         graph = build_revision_graph(tmp_path)
         assert graph.ancestors("aaa") == set()
+
+    def test_ancestors_of_merge_revision(self, tmp_path):
+        _write_migration(tmp_path, "base", None, "base")
+        _write_migration(tmp_path, "left", "base", "left")
+        _write_migration(tmp_path, "right", "base", "right")
+        _write_migration(tmp_path, "merge", ("left", "right"), "merge")
+
+        graph = build_revision_graph(tmp_path)
+        assert graph.ancestors("merge") == {"base", "left", "right"}
+
+
+class TestRevisionGraphWalkToRoot:
+    def test_walk_to_root_includes_all_merge_parents(self, tmp_path):
+        _write_migration(tmp_path, "base", None, "base")
+        _write_migration(tmp_path, "left", "base", "left")
+        _write_migration(tmp_path, "right", "base", "right")
+        _write_migration(tmp_path, "merge", ("left", "right"), "merge")
+
+        graph = build_revision_graph(tmp_path)
+        chain = graph.walk_to_root("merge")
+
+        assert chain[0] == "merge"
+        assert set(chain) == {"base", "left", "right", "merge"}
 
 
 class TestFindBranchRoots:

@@ -9,17 +9,27 @@ from rich.console import Console
 from clickhouse_alembic.display import render_history, render_status
 from clickhouse_alembic.rebase import build_revision_graph
 
+DownRevision = str | tuple[str, ...] | None
+
+
+def _format_down_revision(down_revision: DownRevision) -> tuple[str, str]:
+    if down_revision is None:
+        return "None", ""
+    if isinstance(down_revision, tuple):
+        return repr(down_revision), ", ".join(down_revision)
+    return f"'{down_revision}'", down_revision
+
 
 def _write_migration(
     versions_dir: Path,
     revision: str,
-    down_revision: str | None,
+    down_revision: DownRevision,
     name: str = "migration",
 ) -> Path:
     """Write a minimal migration file and return its path."""
-    down_rev_str = f"'{down_revision}'" if down_revision else "None"
-    revises_str = down_revision if down_revision else ""
-    content = dedent(f"""\
+    down_rev_str, revises_str = _format_down_revision(down_revision)
+    content = dedent(
+        f"""\
         \"""{name}
 
         Revision ID: {revision}
@@ -41,7 +51,8 @@ def _write_migration(
 
         def downgrade() -> None:
             pass
-    """)
+    """
+    )
     path = versions_dir / f"2026_01_01_0000_{revision}_{name}.py"
     path.write_text(content)
     return path
@@ -210,6 +221,26 @@ class TestRenderStatus:
         assert "staging" in output
         assert "Behind by 2" in output
         assert "aaa111" in output  # last applied
+
+    def test_status_at_merge_head_counts_all_parent_chains_applied(self, tmp_path):
+        _write_migration(tmp_path, "base11", None, "base")
+        _write_migration(tmp_path, "left11", "base11", "left")
+        _write_migration(tmp_path, "right1", "base11", "right")
+        _write_migration(tmp_path, "merge1", ("left11", "right1"), "merge")
+
+        graph = build_revision_graph(tmp_path)
+        applied = set(graph.walk_to_root("merge1"))
+        env_config = {"host": "ch.example.com", "database": "mydb", "user": "admin"}
+        console = _capture_console()
+
+        render_status("staging", env_config, graph, applied, console=console)
+        output = _get_output(console)
+
+        assert "Applied" in output
+        assert "4" in output
+        assert "Pending" in output
+        assert "0" in output
+        assert "At head" in output
 
     def test_status_db_unreachable(self, tmp_path):
         _write_migration(tmp_path, "aaa111", None, "create_tables")
