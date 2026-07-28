@@ -299,7 +299,7 @@ Bootstrap creates the following roles:
 
 | Role | Purpose |
 |------|---------|
-| `{project}_migration_role` | Full access for migrations incl. system.* SELECT (required) |
+| `{project}_migration_role` | Full migration access, including explicit `system.grants` introspection (required) |
 | `{project}_readonly_role` | Read-only for MCP tools (optional) |
 | `{project}_dict_role` | Dictionary source access (optional) |
 

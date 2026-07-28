@@ -140,6 +140,8 @@ def build_bootstrap_sql(
         "-- Use CURRENT GRANTS to avoid failure when admin lacks access to some system tables",
         "-- (e.g., system.zookeeper on ClickHouse Cloud)",
         f"GRANT CURRENT GRANTS(SELECT ON system.*) TO {project}_migration_role WITH GRANT OPTION;",
+        "-- ClickHouse Cloud requires explicit grants for individual system tables",
+        f"GRANT SELECT ON system.grants TO {project}_migration_role;",
     ]
 
     # MCP readonly role (optional)
