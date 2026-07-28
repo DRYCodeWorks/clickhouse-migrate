@@ -210,7 +210,7 @@ def upgrade():
 
 | Role | Purpose |
 |------|---------|
-| `{project}_migration_role` | Schema changes (CREATE/DROP/ALTER TABLE/VIEW/DICTIONARY), data ops (SELECT/INSERT/DELETE/TRUNCATE), introspection |
+| `{project}_migration_role` | Schema changes (CREATE/DROP/ALTER TABLE/VIEW/DICTIONARY), data ops (SELECT/INSERT/DELETE/TRUNCATE), and introspection including explicit `system.grants` access |
 | `{project}_readonly_role` | SELECT + SHOW (if mcp_user configured) |
 | `{project}_dict_role` | Dictionary source access (if dict_reader configured) |
 

@@ -20,6 +20,8 @@ CREATE ROLE IF NOT EXISTS {project}_migration_role;
 GRANT ALL ON {db}.* TO {project}_migration_role;
 GRANT CREATE TEMPORARY TABLE ON *.* TO {project}_migration_role;
 GRANT CURRENT GRANTS(SELECT ON system.*) TO {project}_migration_role WITH GRANT OPTION;
+-- ClickHouse Cloud requires explicit grants for individual system tables.
+GRANT SELECT ON system.grants TO {project}_migration_role;
 
 -- =============================================================================
 -- USERS (always created)
